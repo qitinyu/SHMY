@@ -1,7 +1,8 @@
-// LX-HM 底部播放器组件
+// SHMY 底部播放器组件
 // BottomPlayer.ets
 import { SongInfo } from '../model/MusicModel'
 import { PlayerStore } from '../utils/PlayerStore'
+import { DatabaseHelper } from '../database/DatabaseHelper'
 
 const PRIMARY_COLOR: string = '#007DFF'
 const TEXT_PRIMARY: string = '#1A1A1A'
@@ -13,11 +14,14 @@ export struct BottomPlayer {
   @StorageProp('isPlaying') isPlaying: boolean = false
   @StorageProp('currentTime') currentTime: number = 0
   @StorageProp('duration') duration: number = 0
+  @StorageProp('autoJumpDetail') autoJumpDetail: boolean = false
 
   private progress: number = 0
+  private db: DatabaseHelper = DatabaseHelper.getInstance()
 
   aboutToAppear(): void {
     this.updateProgress()
+    this.loadAutoJumpSetting()
   }
 
   private updateProgress(): void {
@@ -26,6 +30,20 @@ export struct BottomPlayer {
     } else {
       this.progress = 0
     }
+  }
+
+  private async loadAutoJumpSetting(): Promise<void> {
+    const val = await this.db.getSetting('autoJumpDetail')
+    if (val === 'true') {
+      AppStorage.setOrCreate('autoJumpDetail', true)
+    } else {
+      AppStorage.setOrCreate('autoJumpDetail', false)
+    }
+  }
+
+  // 统一跳转到完整播放器
+  private goToFullPlayer(): void {
+    PlayerStore.showFullPlayer()
   }
 
   build() {
@@ -76,7 +94,7 @@ export struct BottomPlayer {
           .layoutWeight(1)
 
           // 上一首按钮
-          Text('⏮')
+          Text('\u23EE')
             .fontSize(18)
             .fontColor(TEXT_PRIMARY)
             .width(32)
@@ -88,7 +106,7 @@ export struct BottomPlayer {
 
           // 播放/暂停按钮
           Row() {
-            Text(this.isPlaying ? '⏸' : '▶')
+            Text(this.isPlaying ? '\u23F8' : '\u25B6')
               .fontSize(14)
               .fontColor(Color.White)
           }
@@ -103,7 +121,7 @@ export struct BottomPlayer {
           })
 
           // 下一首按钮
-          Text('⏭')
+          Text('\u23ED')
             .fontSize(18)
             .fontColor(TEXT_PRIMARY)
             .width(32)
@@ -127,7 +145,7 @@ export struct BottomPlayer {
       .position({ x: 0, y: '100%' })
       .translate({ y: '-100%' })
       .onClick(() => {
-        PlayerStore.showFullPlayer()
+        this.goToFullPlayer()
       })
     }
   }

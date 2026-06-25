@@ -1,4 +1,4 @@
-// LX-HM 入口 Ability
+// SHMY 入口 Ability
 // EntryAbility.ets
 import { UIAbility, AbilityConstant, Want } from '@kit.AbilityKit'
 import { window } from '@kit.ArkUI'

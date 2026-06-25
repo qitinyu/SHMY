@@ -1,4 +1,4 @@
-// LX-HM 数据模型定义
+// SHMY 数据模型定义
 // MusicModel.ets
 
 // 音源类型

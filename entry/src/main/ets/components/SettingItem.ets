@@ -1,4 +1,4 @@
-// LX-HM 设置项组件
+// SHMY 设置项组件
 // SettingItem.ets
 
 const TEXT_PRIMARY: string = '#1A1A1A'

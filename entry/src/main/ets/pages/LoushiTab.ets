@@ -1,4 +1,4 @@
-// LX-HM 陋室 Tab - 设置
+// SHMY 陋室 Tab - 设置
 // LoushiTab.ets
 import { AppSettings, DEFAULT_SETTINGS, LYRICS_COLORS, LyricsColorItem } from '../model/MusicModel'
 import { DatabaseHelper } from '../database/DatabaseHelper'
@@ -120,14 +120,15 @@ export struct LoushiTab {
   private async selectBackgroundImage() {
     try {
       const photoSelect = new picker.PhotoViewPicker()
-      const options: picker.PhotoSelectOptions = {
-        MIMEType: picker.PhotoViewMIMETypes.IMAGE_TYPE,
-        maxSelectNumber: 1,
-      }
-      const result: picker.PhotoSelectResult = await photoSelect.select(options)
-      if (result.photoUris && result.photoUris.length > 0) {
-        this.customBgPath = result.photoUris[0]
-        await this.db.setSetting('customBackgroundPath', result.photoUris[0])
+      const selectOptions: picker.PhotoSelectOptions = new picker.PhotoSelectOptions()
+      selectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE
+      selectOptions.maxSelectNumber = 1
+      const result: picker.PhotoSelectResult = await photoSelect.select(selectOptions)
+      const uris: Array<string> = result.photoUris
+      if (uris.length > 0) {
+        const uri: string = uris[0]
+        this.customBgPath = uri
+        await this.db.setSetting('customBackgroundPath', uri)
         this.toastMsg = '\u80CC\u666F\u56FE\u5DF2\u8BBE\u7F6E'
         this.showToast = true
       }
@@ -611,7 +612,7 @@ export struct LoushiTab {
           Column({ space: 12 }) {
             Row() { Text('\uD83C\uDFB5').fontSize(48) }
               .width(80).height(80).borderRadius(20).backgroundColor('#F0F0F0').justifyContent(FlexAlign.Center)
-            Text('LX-HM \u97F3\u4E50\u64AD\u653E\u5668').fontSize(20).fontColor(TEXT_PRIMARY).fontWeight(FontWeight.Bold)
+            Text('SHMY \u97F3\u4E50\u64AD\u653E\u5668').fontSize(20).fontColor(TEXT_PRIMARY).fontWeight(FontWeight.Bold)
             Text('V1.0.1').fontSize(13).fontColor(TEXT_SECONDARY)
             Text('\u8F69\u7A97 \u00B7 \u7434\u745F \u00B7 \u964B\u5BA4').fontSize(14).fontColor(TEXT_SECONDARY)
           }

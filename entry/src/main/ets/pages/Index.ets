@@ -1,4 +1,4 @@
-// LX-HM 主页面 - Index
+// SHMY 主页面 - Index
 // Index.ets
 import { SongInfo } from '../model/MusicModel'
 import { DatabaseHelper } from '../database/DatabaseHelper'
@@ -8,6 +8,7 @@ import { StartupDialog } from '../components/StartupDialog'
 import { XuanchuangTab } from './XuanchuangTab'
 import { QinseTab } from './QinseTab'
 import { LoushiTab } from './LoushiTab'
+import router from '@ohos.router'
 
 const BG_COLOR: string = '#F8F8FA'
 
@@ -16,20 +17,31 @@ const BG_COLOR: string = '#F8F8FA'
 struct Index {
   @State activeTab: number = 0
   @StorageProp('currentTrack') currentTrack: SongInfo | null = null
-  @StorageProp('showFullPlayer') showFullPlayer: boolean = false
+  @StorageProp('showFullPlayer') @Watch('onShowFullPlayerChange') showFullPlayer: boolean = false
+  @StorageProp('fullPlayerPage') fullPlayerPage: string = 'cover'
+  @StorageProp('autoJumpDetail') autoJumpDetail: boolean = false
 
   private db: DatabaseHelper = DatabaseHelper.getInstance()
+  private isNavigating: boolean = false
 
   aboutToAppear(): void {
     // Synchronously show dialog on first frame, then check date async
     AppStorage.setOrCreate('showStartup', true)
     this.checkAnnouncementDate()
+    this.loadAutoJumpSetting()
   }
 
   private async checkAnnouncementDate(): Promise<void> {
     const lastDate: string = await this.db.getSetting('announcementDismissedDate')
     if (lastDate === this.getTodayStr()) {
       AppStorage.setOrCreate('showStartup', false)
+    }
+  }
+
+  private async loadAutoJumpSetting(): Promise<void> {
+    const val = await this.db.getSetting('autoJumpDetail')
+    if (val === 'true') {
+      AppStorage.setOrCreate('autoJumpDetail', true)
     }
   }
 
@@ -49,6 +61,29 @@ struct Index {
     if (dontShowToday) {
       await this.db.setSetting('announcementDismissedDate', this.getTodayStr())
     }
+  }
+
+  private onShowFullPlayerChange(): void {
+    if (this.showFullPlayer) {
+      this.navigateToFullPlayer()
+    }
+  }
+
+  private navigateToFullPlayer(): void {
+    if (this.isNavigating) {
+      return
+    }
+    this.isNavigating = true
+    router.pushUrl({
+      url: 'pages/FullPlayerPage',
+      params: { 'page': this.fullPlayerPage }
+    }).then(() => {
+      AppStorage.setOrCreate('showFullPlayer', false)
+      this.isNavigating = false
+    }).catch((err: Error) => {
+      console.error('[Index] navigate to FullPlayerPage failed:', err)
+      this.isNavigating = false
+    })
   }
 
   build() {

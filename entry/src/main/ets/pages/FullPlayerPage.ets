@@ -1,10 +1,11 @@
-// LX-HM 完整播放器页面
+// SHMY 完整播放器页面
 // FullPlayerPage.ets
 import router from '@ohos.router'
 import { SongInfo, LyricLine } from '../model/MusicModel'
 import { AudioPlayer } from '../utils/AudioPlayer'
 import { MusicApi } from '../utils/MusicApi'
 import { PlayerStore } from '../utils/PlayerStore'
+import { DatabaseHelper } from '../database/DatabaseHelper'
 
 const PRIMARY_COLOR: string = '#007DFF'
 const BG_COLOR: string = '#F8F8FA'
@@ -29,6 +30,7 @@ struct FullPlayerPage {
   private lyricsScroller: Scroller = new Scroller()
   private rotateTimer: number = -1
   private progressTimer: number = -1
+  private db: DatabaseHelper = DatabaseHelper.getInstance()
 
   aboutToAppear(): void {
     this.localPage = this.fullPlayerPage
@@ -54,6 +56,9 @@ struct FullPlayerPage {
     // Start progress timer
     this.startProgressTimer()
     this.startRotationAnimation()
+
+    // 配置播放器回调
+    this.setupPlayerCallbacks()
   }
 
   aboutToDisappear(): void {
@@ -65,6 +70,56 @@ struct FullPlayerPage {
     }
   }
 
+  // 配置音频播放器的回调
+  private setupPlayerCallbacks(): void {
+    const player = AudioPlayer.getInstance()
+    player.onTimeUpdate = (time: number) => {
+      PlayerStore.updateTime(time)
+    }
+    player.onDurationUpdate = (dur: number) => {
+      PlayerStore.updateDuration(dur)
+    }
+    player.onPlayEnd = () => {
+      // 歌曲结束自动播下一首
+      const nextTrack = PlayerStore.onTrackEnd()
+      if (nextTrack) {
+        this.playNewTrack(nextTrack)
+      } else {
+        PlayerStore.pause()
+      }
+    }
+    player.onError = (_error: string) => {
+      PlayerStore.pause()
+    }
+  }
+
+  // 播放新曲目（切歌时调用）
+  private async playNewTrack(track: SongInfo): Promise<void> {
+    // 获取播放链接
+    let playUrl = track.playUrl
+    if (!playUrl) {
+      playUrl = await MusicApi.getPlayUrl(track.songId, track.source)
+    }
+    if (!playUrl) {
+      PlayerStore.pause()
+      return
+    }
+
+    track.playUrl = playUrl
+    PlayerStore.play(track)
+
+    // 加载新歌词
+    this.loadLyrics()
+
+    // 重置进度
+    this.progress = 0
+    this.currentLyricIndex = 0
+    this.lyricsScroller.scrollToIndex(0)
+
+    // 播放
+    await AudioPlayer.getInstance().play(playUrl)
+  }
+
   private async loadLyrics(): Promise<void> {
     if (!this.currentTrack) return
     try {
@@ -72,6 +127,7 @@ struct FullPlayerPage {
       if (raw && raw.length > 0) {
         const parsed = PlayerStore.parseLrc(raw)
         PlayerStore.setLyrics(parsed, raw)
+        this.currentLyricIndex = 0
       }
     } catch (_e) {
       console.error('[FullPlayerPage] loadLyrics failed')
@@ -125,12 +181,12 @@ struct FullPlayerPage {
     return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
   }
 
-  private togglePlayPause(): void {
+  private async togglePlayPause(): Promise<void> {
     if (this.isPlaying) {
-      AudioPlayer.getInstance().pause()
+      await AudioPlayer.getInstance().pause()
       PlayerStore.pause()
     } else {
-      AudioPlayer.getInstance().resume()
+      await AudioPlayer.getInstance().resume()
       PlayerStore.resume()
     }
   }
@@ -140,6 +196,46 @@ struct FullPlayerPage {
     await AudioPlayer.getInstance().seekTo(time)
     PlayerStore.updateTime(time)
     this.progress = position
+  }
+
+  private async handlePrevious(): Promise<void> {
+    const track = PlayerStore.previous()
+    if (track) {
+      await this.playNewTrack(track)
+    }
+  }
+
+  private async handleNext(): Promise<void> {
+    const track = PlayerStore.next()
+    if (track) {
+      await this.playNewTrack(track)
+    }
+  }
+
+  // 记忆播放进度
+  private async saveProgress(): Promise<void> {
+    if (!this.currentTrack) return
+    const shouldRemember = await this.db.getSetting('rememberProgress')
+    if (shouldRemember === 'true' && this.currentTime > 0) {
+      const key = `progress_${this.currentTrack.songId}_${this.currentTrack.source}`
+      await this.db.setSetting(key, String(this.currentTime))
+    }
+  }
+
+  // 恢复播放进度
+  private async restoreProgress(): Promise<void> {
+    if (!this.currentTrack) return
+    const shouldRemember = await this.db.getSetting('rememberProgress')
+    if (shouldRemember === 'true') {
+      const key = `progress_${this.currentTrack.songId}_${this.currentTrack.source}`
+      const savedTime = await this.db.getSetting(key)
+      if (savedTime) {
+        const time = parseFloat(savedTime)
+        if (time > 0 && this.duration > 0) {
+          await this.seekTo(time / this.duration)
+        }
+      }
+    }
   }
 
   build() {
@@ -157,7 +253,7 @@ struct FullPlayerPage {
         // Top bar with back button
         Row({ space: 12 }) {
           Row() {
-            Text('‹')
+            Text('\u2039')
               .fontSize(28)
               .fontColor(TEXT_PRIMARY)
               .fontWeight(FontWeight.Bold)
@@ -166,6 +262,7 @@ struct FullPlayerPage {
           .height(40)
           .justifyContent(FlexAlign.Center)
           .onClick(() => {
+            this.saveProgress()
             PlayerStore.hideFullPlayer()
             router.back()
           })
@@ -221,7 +318,7 @@ struct FullPlayerPage {
           this.ControlBar()
         } else {
           Column() {
-            Text('🎵')
+            Text('\uD83C\uDFB5')
               .fontSize(64)
               .opacity(0.3)
             Text('暂无播放内容')
@@ -322,7 +419,7 @@ struct FullPlayerPage {
   LyricsView() {
     if (this.lyrics.length === 0) {
       Column() {
-        Text('🎼')
+        Text('\uD83C\uDFBC')
           .fontSize(48)
           .opacity(0.3)
         Text('暂无歌词')
@@ -364,7 +461,7 @@ struct FullPlayerPage {
       // Control buttons
       Row({ space: 32 }) {
         // Shuffle
-        Text('🔀')
+        Text('\uD83D\uDD00')
           .fontSize(22)
           .opacity(0.6)
           .width(40)
@@ -372,23 +469,19 @@ struct FullPlayerPage {
           .textAlign(TextAlign.Center)
 
         // Previous
-        Text('⏮')
+        Text('\u23EE')
           .fontSize(26)
           .fontColor(TEXT_PRIMARY)
           .width(48)
           .height(48)
           .textAlign(TextAlign.Center)
           .onClick(() => {
-            PlayerStore.previous()
-            const track = PlayerStore.getCurrentTrack()
-            if (track && track.playUrl) {
-              AudioPlayer.getInstance().play(track.playUrl)
-            }
+            this.handlePrevious()
           })
 
         // Play/Pause
         Row() {
-          Text(this.isPlaying ? '⏸' : '▶')
+          Text(this.isPlaying ? '\u23F8' : '\u25B6')
             .fontSize(22)
             .fontColor(Color.White)
         }
@@ -403,22 +496,18 @@ struct FullPlayerPage {
         })
 
         // Next
-        Text('⏭')
+        Text('\u23ED')
           .fontSize(26)
           .fontColor(TEXT_PRIMARY)
           .width(48)
           .height(48)
           .textAlign(TextAlign.Center)
           .onClick(() => {
-            PlayerStore.next()
-            const track = PlayerStore.getCurrentTrack()
-            if (track && track.playUrl) {
-              AudioPlayer.getInstance().play(track.playUrl)
-            }
+            this.handleNext()
           })
 
         // Repeat
-        Text('🔁')
+        Text('\uD83D\uDD01')
           .fontSize(22)
           .opacity(0.6)
           .width(40)

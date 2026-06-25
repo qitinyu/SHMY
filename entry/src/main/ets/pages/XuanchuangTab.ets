@@ -1,4 +1,4 @@
-// LX-HM 轩窗 Tab - 我的音乐
+// SHMY 轩窗 Tab - 我的音乐
 // XuanchuangTab.ets
 import { SongInfo, Playlist, DownloadItem, DownloadStatus, SourceInfo } from '../model/MusicModel'
 import { DatabaseHelper } from '../database/DatabaseHelper'
@@ -6,7 +6,10 @@ import { AudioPlayer } from '../utils/AudioPlayer'
 import { MusicApi } from '../utils/MusicApi'
 import { PlayerStore } from '../utils/PlayerStore'
 import { SongCard } from '../components/SongCard'
+import { SongActionSheet } from '../components/SongActionSheet'
 import { EmptyState } from '../components/EmptyState'
+import fs from '@ohos.file.fs'
+import { http } from '@kit.NetworkKit'
 
 const PRIMARY_COLOR: string = '#007DFF'
 const BG_COLOR: string = '#F8F8FA'
@@ -34,6 +37,9 @@ export struct XuanchuangTab {
   @State completedCount: number = 0
   @State failedCount: number = 0
 
+  // Download detail - filter
+  @State downloadFilter: string = 'all'
+
   // Dialogs
   @State showCreatePlaylistDialog: boolean = false
   @State newPlaylistName: string = ''
@@ -41,12 +47,33 @@ export struct XuanchuangTab {
   @State renamePlaylistId: string = ''
   @State renameValue: string = ''
 
+  // Export dialog
+  @State showExportDialog: boolean = false
+  @State exportPlaylistTarget: Playlist | null = null
+
+  // Batch mode for downloads
+  @State batchMode: boolean = false
+  @State selectedDownloadIds: Set<string> = new Set()
+
+  // Action sheet
+  @State selectedSong: SongInfo | null = null
+  @State showSongActionSheet: boolean = false
+
+  // Toast
+  @State toastMsg: string = ''
+  @State showToast: boolean = false
+
   // Expanding playlists section
   @State playlistsExpanded: boolean = true
 
   private db: DatabaseHelper = DatabaseHelper.getInstance()
 
   async aboutToAppear() {
+    await this.loadAllData()
+  }
+
+  // 页面重新显示时刷新数据
+  async onPageShow(): Promise<void> {
     await this.loadAllData()
   }
 
@@ -69,6 +96,8 @@ export struct XuanchuangTab {
   private async loadDownloads() {
     this.downloads = await this.db.getDownloads()
     this.computeDownloadStats()
+    // 自动执行等待中的下载
+    this.processPendingDownloads()
   }
 
   private computeDownloadStats() {
@@ -78,37 +107,138 @@ export struct XuanchuangTab {
     this.failedCount = this.downloads.filter(d => d.status === DownloadStatus.FAILED).length
   }
 
-  // Play a song
+  // 处理等待中的下载任务
+  private async processPendingDownloads(): Promise<void> {
+    const pendingItems = this.downloads.filter(d => d.status === DownloadStatus.PENDING)
+    // 高品质最多同时下载5首
+    const activeCount = this.downloadingCount
+
+    for (let i = 0; i < pendingItems.length; i++) {
+      const item = pendingItems[i]
+      const isHighQuality = item.quality === 'high' || item.quality === 'lossless'
+      if (isHighQuality && (activeCount + i) >= 5) {
+        break // 高品质并发限制
+      }
+      this.executeDownload(item)
+    }
+  }
+
+  // 执行单个下载任务
+  private async executeDownload(item: DownloadItem): Promise<void> {
+    try {
+      await this.db.updateDownloadStatus(item.id, 'downloading', 0)
+
+      // 获取播放URL
+      let playUrl = item.playUrl
+      if (!playUrl) {
+        playUrl = await MusicApi.getPlayUrl(item.songId, item.source, item.quality)
+      }
+      if (!playUrl) {
+        await this.db.updateDownloadStatus(item.id, 'failed', 0)
+        return
+      }
+
+      const httpRequest = http.createHttp()
+      try {
+        const response = await httpRequest.request(playUrl, {
+          method: http.RequestMethod.GET,
+          readTimeout: 120000,
+          connectTimeout: 15000,
+        } as http.HttpRequestOptions)
+
+        if (response.responseCode === 200 && response.result) {
+          // 确定文件扩展名
+          let ext: string = '.mp3'
+          if (item.quality === 'lossless') {
+            ext = '.flac'
+          }
+
+          // 安全文件名
+          const safeName = item.songName.replace(/[\/\\:*?"<>|]/g, '_')
+          const safeArtist = item.artist.replace(/[\/\\:*?"<>|]/g, '_')
+          const fileName = `${safeName} - ${safeArtist}${ext}`
+
+          // 确保目录存在
+          const dirPath = '/SHMY/Music/'
+          try {
+            fs.mkdir(dirPath, true)
+          } catch (_e) {
+            // 目录可能已存在
+          }
+
+          const filePath: string = dirPath + fileName
+
+          // 写入文件
+          if (typeof response.result === 'string') {
+            const file: fs.File = fs.openSync(filePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY)
+            fs.writeSync(file.fd, response.result)
+            fs.closeSync(file)
+          }
+
+          await this.db.updateDownloadStatus(item.id, 'completed', 100)
+        } else {
+          await this.db.updateDownloadStatus(item.id, 'failed', 0)
+        }
+      } catch (_e) {
+        console.error('[XuanchuangTab] download write failed')
+        await this.db.updateDownloadStatus(item.id, 'failed', 0)
+      } finally {
+        httpRequest.destroy()
+      }
+
+      // 刷新下载列表
+      await this.loadDownloads()
+    } catch (e) {
+      console.error('[XuanchuangTab] executeDownload failed:', e)
+      await this.db.updateDownloadStatus(item.id, 'failed', 0)
+    }
+  }
+
+  // ===== 播放歌曲 =====
   private async playSong(song: SongInfo) {
-    // Get play URL if not available
+    // 获取播放链接
     if (!song.playUrl) {
       song.playUrl = await MusicApi.getPlayUrl(song.songId, song.source)
     }
     if (!song.playUrl) return
 
-    PlayerStore.play(song)
-    AudioPlayer.getInstance().onTimeUpdate = (time: number) => {
+    // 设置队列 - 优先使用当前列表
+    let queue = this.playlistSongs.length > 0 ? this.playlistSongs : this.favorites
+    let idx = queue.findIndex(s => s.songId === song.songId && s.source === song.source)
+    if (idx < 0) idx = 0
+
+    PlayerStore.play(song, queue, idx)
+
+    // 配置播放器回调
+    const player = AudioPlayer.getInstance()
+    player.onTimeUpdate = (time: number) => {
       PlayerStore.updateTime(time)
     }
-    AudioPlayer.getInstance().onDurationUpdate = (duration: number) => {
+    player.onDurationUpdate = (duration: number) => {
       PlayerStore.updateDuration(duration)
     }
-    AudioPlayer.getInstance().onPlayEnd = () => {
+    player.onPlayEnd = () => {
+      const nextTrack = PlayerStore.onTrackEnd()
+      if (nextTrack) {
+        this.playSong(nextTrack)
+      } else {
+        PlayerStore.pause()
+      }
+    }
+    player.onError = (_error: string) => {
       PlayerStore.pause()
     }
-    AudioPlayer.getInstance().onError = (_error: string) => {
-      PlayerStore.pause()
-    }
-    await AudioPlayer.getInstance().play(song.playUrl)
+
+    await player.play(song.playUrl)
   }
 
-  // Remove favorite
+  // ===== 收藏 =====
   private async removeFavorite(song: SongInfo) {
     await this.db.removeFavorite(song.songId, song.source)
     await this.loadFavorites()
   }
 
-  // Create playlist
+  // ===== 歌单 CRUD =====
   private async doCreatePlaylist() {
     if (!this.newPlaylistName.trim()) return
     await this.db.createPlaylist(this.newPlaylistName.trim())
@@ -117,7 +247,6 @@ export struct XuanchuangTab {
     await this.loadPlaylists()
   }
 
-  // Rename playlist
   private async doRenamePlaylist() {
     if (!this.renameValue.trim()) return
     await this.db.renamePlaylist(this.renamePlaylistId, this.renameValue.trim())
@@ -126,20 +255,17 @@ export struct XuanchuangTab {
     await this.loadPlaylists()
   }
 
-  // Delete playlist
   private async deletePlaylist(id: string) {
     await this.db.deletePlaylist(id)
     await this.loadPlaylists()
   }
 
-  // Navigate to playlist detail
   private async openPlaylistDetail(playlist: Playlist) {
     this.selectedPlaylist = playlist
     this.playlistSongs = await this.db.getPlaylistSongs(playlist.id)
     this.subPage = 'playlistDetail'
   }
 
-  // Remove song from playlist
   private async removeSongFromPlaylist(song: SongInfo) {
     if (!this.selectedPlaylist) return
     await this.db.removeSongFromPlaylist(this.selectedPlaylist.id, song.songId, song.source)
@@ -147,10 +273,116 @@ export struct XuanchuangTab {
     await this.loadPlaylists()
   }
 
-  // Delete download
+  // ===== 歌单导出 =====
+  private async exportPlaylist(playlist: Playlist, format: string): Promise<void> {
+    try {
+      const songs = await this.db.getPlaylistSongs(playlist.id)
+
+      // 确保导出目录存在
+      const exportDir = '/SHMY/Playlist/'
+      try {
+        fs.mkdir(exportDir, true)
+      } catch (_e) {
+        // 目录可能已存在
+      }
+
+      const safeName = playlist.name.replace(/[\/\\:*?"<>|]/g, '_')
+
+      if (format === 'json') {
+        // JSON 格式导出
+        const jsonStr: string = JSON.stringify({
+          name: playlist.name,
+          exportTime: new Date().toISOString(),
+          songCount: songs.length,
+          songs: songs,
+        })
+        const jsonFilePath: string = exportDir + safeName + '.json'
+        const jsonFile: fs.File = fs.openSync(jsonFilePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
+        fs.writeSync(jsonFile.fd, jsonStr)
+        fs.closeSync(jsonFile)
+        this.showToastMsg(`已导出: ${exportDir}${safeName}.json`)
+      } else if (format === 'lxmc') {
+        // LXMC 自定义格式 (JSON + 自定义头)
+        const header: string = 'LXMC_V1.0.0'
+        const lxmcJson: string = JSON.stringify({
+          name: playlist.name,
+          exportTime: new Date().toISOString(),
+          songCount: songs.length,
+          songs: songs,
+        })
+        const lxmcContent: string = header + '\n' + lxmcJson
+        const lxmcFilePath: string = exportDir + safeName + '.lxmc'
+        const lxmcFile: fs.File = fs.openSync(lxmcFilePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
+        fs.writeSync(lxmcFile.fd, lxmcContent)
+        fs.closeSync(lxmcFile)
+        this.showToastMsg(`已导出: ${exportDir}${safeName}.lxmc`)
+      }
+
+      this.showExportDialog = false
+    } catch (e) {
+      console.error('[XuanchuangTab] exportPlaylist failed:', e)
+      this.showToastMsg('导出失败，请检查存储权限')
+    }
+  }
+
+  // ===== 下载操作 =====
   private async removeDownload(id: string) {
     await this.db.deleteDownload(id)
     await this.loadDownloads()
+  }
+
+  // 批量删除已完成或失败的下载
+  private async batchDeleteSelected(): Promise<void> {
+    const ids = Array.from(this.selectedDownloadIds)
+    for (let i = 0; i < ids.length; i++) {
+      await this.db.deleteDownload(ids[i])
+    }
+    this.selectedDownloadIds = new Set()
+    this.batchMode = false
+    await this.loadDownloads()
+    this.showToastMsg(`已删除 ${ids.length} 个下载任务`)
+  }
+
+  // 批量添加到歌单
+  private async batchAddToPlaylist(playlistId: string): Promise<void> {
+    let count = 0
+    for (let i = 0; i < this.downloads.length; i++) {
+      const item = this.downloads[i]
+      if (this.selectedDownloadIds.has(item.id)) {
+        const song: SongInfo = {
+          songId: item.songId,
+          songName: item.songName,
+          artist: item.artist,
+          album: item.album,
+          coverUrl: item.coverUrl,
+          source: item.source,
+          playUrl: item.playUrl,
+        }
+        const result = await this.db.addSongToPlaylist(playlistId, song)
+        if (result) count++
+      }
+    }
+    this.selectedDownloadIds = new Set()
+    this.batchMode = false
+    this.showToastMsg(`已添加 ${count} 首到歌单`)
+  }
+
+  // 重试失败任务
+  private async retryFailed(): Promise<void> {
+    const failedItems = this.downloads.filter(d => d.status === DownloadStatus.FAILED)
+    for (let i = 0; i < failedItems.length; i++) {
+      await this.db.updateDownloadStatus(failedItems[i].id, 'pending', 0)
+    }
+    if (failedItems.length > 0) {
+      this.showToastMsg(`已重试 ${failedItems.length} 个失败任务`)
+      await this.loadDownloads()
+    }
+  }
+
+  // 过滤后的下载列表
+  private getFilteredDownloads(): DownloadItem[] {
+    if (this.downloadFilter === 'all') return this.downloads
+    return this.downloads.filter(d => d.status === this.downloadFilter)
   }
 
   // Format time
@@ -184,33 +416,110 @@ export struct XuanchuangTab {
     }
   }
 
+  private showToastMsg(msg: string): void {
+    this.toastMsg = msg
+    this.showToast = true
+    setTimeout(() => {
+      this.showToast = false
+    }, 2000)
+  }
+
   build() {
-    Column() {
-      if (this.subPage === 'main') {
-        this.MainContent()
-      } else if (this.subPage === 'playlistDetail') {
-        this.PlaylistDetailContent()
-      } else if (this.subPage === 'downloadDetail') {
-        this.DownloadDetailContent()
+    Stack() {
+      Column() {
+        if (this.subPage === 'main') {
+          this.MainContent()
+        } else if (this.subPage === 'playlistDetail') {
+          this.PlaylistDetailContent()
+        } else if (this.subPage === 'downloadDetail') {
+          this.DownloadDetailContent()
+        }
+
+        // Toast overlay
+        if (this.showToast) {
+          Text(this.toastMsg)
+            .fontSize(14)
+            .fontColor(Color.White)
+            .backgroundColor('#333333CC')
+            .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+            .borderRadius(20)
+            .position({ x: '50%', y: 120 })
+            .translate({ x: '-50%' })
+            .onClick(() => { this.showToast = false })
+        }
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(BG_COLOR)
+
+      // Sheet trigger: 创建歌单
+      Row()
+        .width(1)
+        .height(1)
+        .bindSheet($$this.showCreatePlaylistDialog, this.CreatePlaylistSheet(), {
+          height: SheetSize.FIT_CONTENT,
+          dragBar: true,
+          showClose: true,
+          backgroundColor: '#FFFFFF',
+          onDisappear: () => {
+            this.showCreatePlaylistDialog = false
+          },
+        })
+
+      // Sheet trigger: 重命名歌单
+      Row()
+        .width(1)
+        .height(1)
+        .bindSheet($$this.showRenameDialog, this.RenamePlaylistSheet(), {
+          height: SheetSize.FIT_CONTENT,
+          dragBar: true,
+          showClose: true,
+          backgroundColor: '#FFFFFF',
+          onDisappear: () => {
+            this.showRenameDialog = false
+          },
+        })
+
+      // Sheet trigger: 导出歌单
+      Row()
+        .width(1)
+        .height(1)
+        .bindSheet($$this.showExportDialog, this.ExportPlaylistSheet(), {
+          height: SheetSize.FIT_CONTENT,
+          dragBar: true,
+          showClose: true,
+          backgroundColor: '#FFFFFF',
+          onDisappear: () => {
+            this.showExportDialog = false
+          },
+        })
+
+      // Song action sheet for playlist songs
+      if (this.selectedSong) {
+        SongActionSheet({
+          song: this.selectedSong!,
+          visible: this.showSongActionSheet,
+          onDismiss: () => {
+            this.showSongActionSheet = false
+            this.selectedSong = null
+          },
+          onPlay: (song: SongInfo) => {
+            this.playSong(song)
+          },
+          onAddFavorite: (song: SongInfo) => {
+            this.db.addFavorite(song).then((result) => {
+              if (result) {
+                this.showToastMsg('已添加到收藏')
+              } else {
+                this.showToastMsg('已在收藏中')
+              }
+            })
+          },
+        })
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(BG_COLOR)
-    // Create playlist dialog
-    .bindSheet($$this.showCreatePlaylistDialog, this.CreatePlaylistSheet(), {
-      height: SheetSize.FIT_CONTENT,
-      dragBar: false,
-      showClose: false,
-      backgroundColor: '#FFFFFF',
-    })
-    // Rename dialog
-    .bindSheet($$this.showRenameDialog, this.RenamePlaylistSheet(), {
-      height: SheetSize.FIT_CONTENT,
-      dragBar: false,
-      showClose: false,
-      backgroundColor: '#FFFFFF',
-    })
   }
 
   @Builder
@@ -262,7 +571,7 @@ export struct XuanchuangTab {
 
       if (this.favorites.length === 0) {
         Column({ space: 8 }) {
-          Text('❤️')
+          Text('\u2764\uFE0F')
             .fontSize(36)
             .opacity(0.4)
           Text('还没有收藏歌曲')
@@ -286,9 +595,10 @@ export struct XuanchuangTab {
                 onPlay: (s: SongInfo) => {
                   this.playSong(s)
                 },
-                onMore: (_s: SongInfo) => {
-                  // Context menu via long press on SongCard is handled inline
-                }
+                onMore: (s: SongInfo) => {
+                  this.selectedSong = s
+                  this.showSongActionSheet = true
+                },
               })
             }
             .bindMenu([
@@ -358,7 +668,7 @@ export struct XuanchuangTab {
       if (this.playlistsExpanded) {
         if (this.playlists.length === 0) {
           Column({ space: 8 }) {
-            Text('🎵')
+            Text('\uD83C\uDFB5')
               .fontSize(36)
               .opacity(0.4)
             Text('还没有创建歌单')
@@ -376,7 +686,7 @@ export struct XuanchuangTab {
               Row({ space: 12 }) {
                 // Playlist icon
                 Row() {
-                  Text('🎼')
+                  Text('\uD83C\uDFB5')
                     .fontSize(20)
                 }
                 .width(44)
@@ -401,8 +711,20 @@ export struct XuanchuangTab {
                 .alignItems(HorizontalAlign.Start)
                 .layoutWeight(1)
 
+                // Export icon
+                Text('\uD83D\uDCE4')
+                  .fontSize(16)
+                  .width(36)
+                  .height(36)
+                  .textAlign(TextAlign.Center)
+                  .hitTestBehavior(HitTestMode.Block)
+                  .onClick(() => {
+                    this.exportPlaylistTarget = playlist
+                    this.showExportDialog = true
+                  })
+
                 // Rename icon
-                Text('✏️')
+                Text('\u270F\uFE0F')
                   .fontSize(16)
                   .width(36)
                   .height(36)
@@ -415,7 +737,7 @@ export struct XuanchuangTab {
                   })
 
                 // Delete icon
-                Text('🗑️')
+                Text('\uD83D\uDDD1\uFE0F')
                   .fontSize(16)
                   .width(36)
                   .height(36)
@@ -461,7 +783,7 @@ export struct XuanchuangTab {
       .padding({ left: 16, right: 16 })
 
       // Stats bar
-      Row({ space: 16 }) {
+      Row({ space: 8 }) {
         this.StatBadge('下载中', this.downloadingCount, PRIMARY_COLOR)
         this.StatBadge('等待中', this.pendingCount, '#FF9800')
         this.StatBadge('已完成', this.completedCount, '#4CAF50')
@@ -472,7 +794,7 @@ export struct XuanchuangTab {
 
       if (this.downloads.length === 0) {
         Column({ space: 8 }) {
-          Text('📥')
+          Text('\uD83D\uDCE5')
             .fontSize(36)
             .opacity(0.4)
           Text('暂无下载任务')
@@ -494,7 +816,7 @@ export struct XuanchuangTab {
             .fontColor(PRIMARY_COLOR)
             .fontWeight(FontWeight.Medium)
 
-          Text('›')
+          Text('\u203A')
             .fontSize(16)
             .fontColor(PRIMARY_COLOR)
         }
@@ -522,7 +844,7 @@ export struct XuanchuangTab {
         .fontSize(12)
         .fontColor(TEXT_SECONDARY)
     }
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .padding({ left: 8, right: 8, top: 8, bottom: 8 })
     .backgroundColor(CARD_BG)
     .borderRadius(8)
     .layoutWeight(1)
@@ -535,7 +857,7 @@ export struct XuanchuangTab {
       // Top bar
       Row({ space: 12 }) {
         Row() {
-          Text('‹')
+          Text('\u2039')
             .fontSize(24)
             .fontColor(TEXT_PRIMARY)
         }
@@ -560,6 +882,23 @@ export struct XuanchuangTab {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
+
+        // Export button in detail
+        Row() {
+          Text('\uD83D\uDCE4')
+            .fontSize(16)
+            .fontColor(PRIMARY_COLOR)
+        }
+        .width(36)
+        .height(36)
+        .justifyContent(FlexAlign.Center)
+        .hitTestBehavior(HitTestMode.Block)
+        .onClick(() => {
+          if (this.selectedPlaylist) {
+            this.exportPlaylistTarget = this.selectedPlaylist
+            this.showExportDialog = true
+          }
+        })
       }
       .width('100%')
       .height(56)
@@ -568,7 +907,7 @@ export struct XuanchuangTab {
 
       // Song list
       if (this.playlistSongs.length === 0) {
-        EmptyState({ icon: '🎼', title: '歌单是空的', subtitle: '在琴瑟页面搜索并添加歌曲' })
+        EmptyState({ icon: '\uD83C\uDFB5', title: '歌单是空的', subtitle: '在琴瑟页面搜索并添加歌曲' })
       } else {
         Scroll() {
           Column({ space: 8 }) {
@@ -578,6 +917,10 @@ export struct XuanchuangTab {
                   song: song,
                   onPlay: (s: SongInfo) => {
                     this.playSong(s)
+                  },
+                  onMore: (s: SongInfo) => {
+                    this.selectedSong = s
+                    this.showSongActionSheet = true
                   },
                 })
               }
@@ -606,7 +949,7 @@ export struct XuanchuangTab {
       // Top bar
       Row({ space: 12 }) {
         Row() {
-          Text('‹')
+          Text('\u2039')
             .fontSize(24)
             .fontColor(TEXT_PRIMARY)
         }
@@ -615,6 +958,8 @@ export struct XuanchuangTab {
         .justifyContent(FlexAlign.Center)
         .onClick(() => {
           this.subPage = 'main'
+          this.batchMode = false
+          this.selectedDownloadIds = new Set()
         })
 
         Text('下载列表')
@@ -622,20 +967,122 @@ export struct XuanchuangTab {
           .fontColor(TEXT_PRIMARY)
           .fontWeight(FontWeight.Bold)
           .layoutWeight(1)
+
+        // Batch mode toggle
+        Text(this.batchMode ? '完成' : '管理')
+          .fontSize(14)
+          .fontColor(PRIMARY_COLOR)
+          .fontWeight(FontWeight.Medium)
+          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+          .borderRadius(16)
+          .backgroundColor('#E3F2FD')
+          .onClick(() => {
+            if (this.batchMode) {
+              // 退出批量模式
+              this.batchMode = false
+              this.selectedDownloadIds = new Set()
+            } else {
+              this.batchMode = true
+              this.selectedDownloadIds = new Set()
+            }
+          })
       }
       .width('100%')
       .height(56)
       .padding({ left: 8, right: 16 })
       .alignItems(VerticalAlign.Center)
 
+      // Filter tabs
+      Row({ space: 8 }) {
+        this.FilterChip('全部', 'all')
+        this.FilterChip('下载中', 'downloading')
+        this.FilterChip('等待中', 'pending')
+        this.FilterChip('已完成', 'completed')
+        this.FilterChip('失败', 'failed')
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+
+      // Batch action bar
+      if (this.batchMode && this.selectedDownloadIds.size > 0) {
+        Row({ space: 12 }) {
+          Text(`已选 ${this.selectedDownloadIds.size} 项`)
+            .fontSize(14)
+            .fontColor(TEXT_PRIMARY)
+            .layoutWeight(1)
+
+          Button('删除选中')
+            .height(32)
+            .fontSize(13)
+            .fontColor(Color.White)
+            .backgroundColor('#F44336')
+            .borderRadius(16)
+            .padding({ left: 16, right: 16 })
+            .onClick(() => {
+              this.batchDeleteSelected()
+            })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 4, bottom: 8 })
+        .backgroundColor('#FFF5F5')
+      }
+
+      // Batch actions for non-batch mode
+      if (!this.batchMode) {
+        Row({ space: 12 }) {
+          if (this.failedCount > 0) {
+            Button('重试失败')
+              .height(32)
+              .fontSize(13)
+              .fontColor(PRIMARY_COLOR)
+              .backgroundColor('#E3F2FD')
+              .borderRadius(16)
+              .padding({ left: 12, right: 12 })
+              .onClick(() => {
+                this.retryFailed()
+              })
+          }
+
+          Blank().layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, bottom: 8 })
+      }
+
       // Download list
-      if (this.downloads.length === 0) {
-        EmptyState({ icon: '📥', title: '暂无下载', subtitle: '去琴瑟页面搜索并下载音乐吧' })
+      if (this.getFilteredDownloads().length === 0) {
+        EmptyState({ icon: '\uD83D\uDCE5', title: '暂无下载', subtitle: '去琴瑟页面搜索并下载音乐吧' })
       } else {
         Scroll() {
           Column({ space: 8 }) {
-            ForEach(this.downloads, (item: DownloadItem) => {
+            ForEach(this.getFilteredDownloads(), (item: DownloadItem) => {
               Row({ space: 12 }) {
+                // Checkbox in batch mode
+                if (this.batchMode) {
+                  Row() {
+                    if (this.selectedDownloadIds.has(item.id)) {
+                      Text('\u2713')
+                        .fontSize(12)
+                        .fontColor(Color.White)
+                    }
+                  }
+                  .width(22)
+                  .height(22)
+                  .borderRadius(11)
+                  .border({ width: 1.5, color: this.selectedDownloadIds.has(item.id) ? PRIMARY_COLOR : '#CCCCCC' })
+                  .backgroundColor(this.selectedDownloadIds.has(item.id) ? PRIMARY_COLOR : Color.White)
+                  .justifyContent(FlexAlign.Center)
+                  .onClick(() => {
+                    const newSet = new Set(this.selectedDownloadIds)
+                    if (newSet.has(item.id)) {
+                      newSet.delete(item.id)
+                    } else {
+                      newSet.add(item.id)
+                    }
+                    this.selectedDownloadIds = newSet
+                  })
+                }
+
                 // Cover
                 Image(item.coverUrl)
                   .width(44)
@@ -652,7 +1099,7 @@ export struct XuanchuangTab {
                     .fontWeight(FontWeight.Medium)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .constraintSize({ maxWidth: '60%' })
+                    .constraintSize({ maxWidth: '50%' })
 
                   Row({ space: 8 }) {
                     Text(item.artist)
@@ -667,6 +1114,12 @@ export struct XuanchuangTab {
                       .backgroundColor(SourceInfo.getColor(item.source))
                       .padding({ left: 4, right: 4, top: 1, bottom: 1 })
                       .borderRadius(3)
+
+                    if (item.quality !== 'standard') {
+                      Text(item.quality === 'lossless' ? '无损' : '高品质')
+                        .fontSize(10)
+                        .fontColor(PRIMARY_COLOR)
+                    }
                   }
                 }
                 .alignItems(HorizontalAlign.Start)
@@ -680,16 +1133,18 @@ export struct XuanchuangTab {
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                   .borderRadius(10)
 
-                // Delete
-                Text('✕')
-                  .fontSize(16)
-                  .fontColor(TEXT_SECONDARY)
-                  .width(28)
-                  .height(28)
-                  .textAlign(TextAlign.Center)
-                  .onClick(() => {
-                    this.removeDownload(item.id)
-                  })
+                // Delete button (non-batch mode)
+                if (!this.batchMode) {
+                  Text('\u2715')
+                    .fontSize(16)
+                    .fontColor(TEXT_SECONDARY)
+                    .width(28)
+                    .height(28)
+                    .textAlign(TextAlign.Center)
+                    .onClick(() => {
+                      this.removeDownload(item.id)
+                    })
+                }
               }
               .width('100%')
               .padding(12)
@@ -708,6 +1163,20 @@ export struct XuanchuangTab {
     .width('100%')
     .height('100%')
     .backgroundColor(BG_COLOR)
+  }
+
+  @Builder
+  FilterChip(label: string, filter: string) {
+    Text(label)
+      .fontSize(13)
+      .fontColor(this.downloadFilter === filter ? Color.White : TEXT_SECONDARY)
+      .fontWeight(this.downloadFilter === filter ? FontWeight.Medium : FontWeight.Normal)
+      .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+      .borderRadius(16)
+      .backgroundColor(this.downloadFilter === filter ? PRIMARY_COLOR : CARD_BG)
+      .onClick(() => {
+        this.downloadFilter = filter
+      })
   }
 
   @Builder
@@ -799,6 +1268,87 @@ export struct XuanchuangTab {
           .borderRadius(22)
           .onClick(() => {
             this.doRenamePlaylist()
+          })
+      }
+      .width('100%')
+    }
+    .padding(24)
+  }
+
+  @Builder
+  ExportPlaylistSheet() {
+    Column({ space: 20 }) {
+      Text('导出歌单')
+        .fontSize(17)
+        .fontColor(TEXT_PRIMARY)
+        .fontWeight(FontWeight.Bold)
+        .width('100%')
+
+      Text(`将歌单「${this.exportPlaylistTarget?.name ?? ''}」导出到 /SHMY/Playlist/`)
+        .fontSize(13)
+        .fontColor(TEXT_SECONDARY)
+        .width('100%')
+
+      // JSON export
+      Row({ space: 12 }) {
+        Column({ space: 4 }) {
+          Text('\uD83D\uDCC4')
+            .fontSize(24)
+          Text('JSON')
+            .fontSize(13)
+            .fontColor(TEXT_PRIMARY)
+            .fontWeight(FontWeight.Medium)
+          Text('通用格式，便于跨平台')
+            .fontSize(11)
+            .fontColor(TEXT_SECONDARY)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        .padding(16)
+        .backgroundColor(CARD_BG)
+        .borderRadius(12)
+        .onClick(() => {
+          if (this.exportPlaylistTarget) {
+            this.exportPlaylist(this.exportPlaylistTarget, 'json')
+          }
+        })
+      }
+
+      // LXMC export
+      Row({ space: 12 }) {
+        Column({ space: 4 }) {
+          Text('\uD83C\uDFB5')
+            .fontSize(24)
+          Text('LXMC')
+            .fontSize(13)
+            .fontColor(TEXT_PRIMARY)
+            .fontWeight(FontWeight.Medium)
+          Text('应用专用格式')
+            .fontSize(11)
+            .fontColor(TEXT_SECONDARY)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        .padding(16)
+        .backgroundColor(CARD_BG)
+        .borderRadius(12)
+        .onClick(() => {
+          if (this.exportPlaylistTarget) {
+            this.exportPlaylist(this.exportPlaylistTarget, 'lxmc')
+          }
+        })
+      }
+
+      Row({ space: 12 }) {
+        Button('取消')
+          .layoutWeight(1)
+          .height(44)
+          .fontSize(15)
+          .fontColor(TEXT_PRIMARY)
+          .backgroundColor(CARD_BG)
+          .borderRadius(22)
+          .onClick(() => {
+            this.showExportDialog = false
           })
       }
       .width('100%')

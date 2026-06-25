@@ -37,10 +37,14 @@ function getStorageNum(key: string): number {
 
 export class PlayerStore {
 
-  // 播放
-  static play(track: SongInfo): void {
+  // 播放指定曲目并设置队列
+  static play(track: SongInfo, queue?: SongInfo[], queueIndex?: number): void {
     AppStorage.setOrCreate(PlayerKeys.CURRENT_TRACK, track)
     AppStorage.setOrCreate(PlayerKeys.IS_PLAYING, true)
+    if (queue !== undefined) {
+      AppStorage.setOrCreate(PlayerKeys.QUEUE, queue)
+      AppStorage.setOrCreate(PlayerKeys.QUEUE_INDEX, queueIndex ?? 0)
+    }
   }
 
   // 暂停
@@ -59,26 +63,48 @@ export class PlayerStore {
     AppStorage.setOrCreate(PlayerKeys.IS_PLAYING, !playing)
   }
 
-  // 下一首
-  static next(): void {
+  // 下一首 - 返回新曲目以便调用方播放
+  static next(): SongInfo | undefined {
     const queue = AppStorage.get(PlayerKeys.QUEUE) as SongInfo[]
     const index = getStorageNum(PlayerKeys.QUEUE_INDEX)
-    if (!queue || queue.length === 0) return
-    const nextIndex = index + 1
-    if (nextIndex >= queue.length) return
+    if (!queue || queue.length === 0) return undefined
+    let nextIndex = index + 1
+    // 循环播放：到末尾回到开头
+    if (nextIndex >= queue.length) {
+      nextIndex = 0
+    }
     AppStorage.setOrCreate(PlayerKeys.QUEUE_INDEX, nextIndex)
-    PlayerStore.play(queue[nextIndex])
+    const track = queue[nextIndex]
+    if (track) {
+      AppStorage.setOrCreate(PlayerKeys.CURRENT_TRACK, track)
+      AppStorage.setOrCreate(PlayerKeys.IS_PLAYING, true)
+    }
+    return track
   }
 
-  // 上一首
-  static previous(): void {
+  // 上一首 - 返回新曲目以便调用方播放
+  static previous(): SongInfo | undefined {
     const queue = AppStorage.get(PlayerKeys.QUEUE) as SongInfo[]
     const index = getStorageNum(PlayerKeys.QUEUE_INDEX)
-    if (!queue || queue.length === 0) return
-    const prevIndex = index - 1
-    if (prevIndex < 0) return
+    if (!queue || queue.length === 0) return undefined
+    // 如果当前播放超过3秒，回到开头；否则上一首
+    const currentTime = getStorageNum(PlayerKeys.CURRENT_TIME)
+    let prevIndex = index
+    if (currentTime > 3) {
+      // 回到当前歌曲开头
+    } else {
+      prevIndex = index - 1
+      if (prevIndex < 0) {
+        prevIndex = queue.length - 1
+      }
+    }
     AppStorage.setOrCreate(PlayerKeys.QUEUE_INDEX, prevIndex)
-    PlayerStore.play(queue[prevIndex])
+    const track = queue[prevIndex]
+    if (track) {
+      AppStorage.setOrCreate(PlayerKeys.CURRENT_TRACK, track)
+      AppStorage.setOrCreate(PlayerKeys.IS_PLAYING, true)
+    }
+    return track
   }
 
   // 更新当前时间
@@ -97,13 +123,30 @@ export class PlayerStore {
     AppStorage.setOrCreate(PlayerKeys.QUEUE_INDEX, 0)
   }
 
-  // 添加到队列
+  // 添加到队列末尾（稍后播放）
   static addToQueue(track: SongInfo): void {
     const queue = AppStorage.get(PlayerKeys.QUEUE) as SongInfo[]
     if (queue) {
       const newQueue: SongInfo[] = queue.slice()
       newQueue.push(track)
       AppStorage.setOrCreate(PlayerKeys.QUEUE, newQueue)
+    } else {
+      // 队列为空，创建新队列并设为当前播放
+      AppStorage.setOrCreate(PlayerKeys.QUEUE, [track])
+    }
+  }
+
+  // 插入到下一首播放（当前曲目之后）
+  static insertNext(track: SongInfo): void {
+    const queue = AppStorage.get(PlayerKeys.QUEUE) as SongInfo[]
+    const index = getStorageNum(PlayerKeys.QUEUE_INDEX)
+    if (queue && queue.length > 0) {
+      const newQueue: SongInfo[] = queue.slice()
+      newQueue.splice(index + 1, 0, track)
+      AppStorage.setOrCreate(PlayerKeys.QUEUE, newQueue)
+    } else {
+      // 队列为空，创建新队列
+      AppStorage.setOrCreate(PlayerKeys.QUEUE, [track])
     }
   }
 
@@ -139,10 +182,20 @@ export class PlayerStore {
     return queue ?? []
   }
 
+  // 获取当前队列索引
+  static getQueueIndex(): number {
+    return getStorageNum(PlayerKeys.QUEUE_INDEX)
+  }
+
   // 获取歌词
   static getLyrics(): LyricLine[] {
     const lyrics = AppStorage.get(PlayerKeys.LYRICS) as LyricLine[]
     return lyrics ?? []
+  }
+
+  // 歌曲播放结束 - 自动播下一首
+  static onTrackEnd(): SongInfo | undefined {
+    return PlayerStore.next()
   }
 
   // 解析 LRC 歌词
@@ -153,15 +206,22 @@ export class PlayerStore {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/)
-      if (match && match.length >= 5) {
+      // 支持多时间标签格式: [00:12.34][00:12.345]歌词
+      const timeRegex = /\[(\d{1,2}):(\d{2})\.(\d{2,3})\]/g
+      const timeMatches: number[] = []
+      let match: RegExpExecArray | null = null
+      while ((match = timeRegex.exec(line)) !== null) {
         const min = parseInt(match[1])
         const sec = parseInt(match[2])
         const ms = parseInt(match[3].padEnd(3, '0'))
         const time = min * 60 + sec + ms / 1000
-        const text = match[4].trim()
-        if (text.length > 0) {
-          result.push({ time: time, text: text })
+        timeMatches.push(time)
+      }
+      // 提取歌词文本（去掉所有时间标签）
+      const text = line.replace(/\[\d{1,2}:\d{2}\.\d{2,3}\]/g, '').trim()
+      if (text.length > 0 && timeMatches.length > 0) {
+        for (let j = 0; j < timeMatches.length; j++) {
+          result.push({ time: timeMatches[j], text: text })
         }
       }
     }

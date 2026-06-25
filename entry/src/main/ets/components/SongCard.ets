@@ -1,4 +1,4 @@
-// LX-HM 歌曲卡片组件
+// SHMY 歌曲卡片组件
 // SongCard.ets
 import { SongInfo, SourceInfo, createEmptySongInfo } from '../model/MusicModel'
 
@@ -11,6 +11,9 @@ export struct SongCard {
   song: SongInfo = createEmptySongInfo()
   onPlay?: (song: SongInfo) => void
   onMore?: (song: SongInfo) => void
+
+  // 模式：true = 双击播放（琴瑟搜索结果），false = 单击播放（轩窗收藏/歌单）
+  doubleTapToPlay: boolean = false
 
   @State private isPressed: boolean = false
 
@@ -57,7 +60,7 @@ export struct SongCard {
       .layoutWeight(1)
 
       // 更多按钮
-      Text('⋯')
+      Text('\u22EF')
         .fontSize(20)
         .fontColor(TEXT_SECONDARY)
         .width(32)
@@ -75,11 +78,6 @@ export struct SongCard {
     .borderRadius(12)
     .scale({ x: this.isPressed ? 0.97 : 1, y: this.isPressed ? 0.97 : 1 })
     .animation({ duration: 150 })
-    .onClick(() => {
-      if (this.onPlay) {
-        this.onPlay(this.song)
-      }
-    })
     .gesture(
       LongPressGesture({ repeat: false, duration: 500 })
         .onAction(() => {
@@ -88,5 +86,22 @@ export struct SongCard {
           }
         })
     )
+    .gesture(
+      TapGesture({ count: 2 })
+        .onAction(() => {
+          // 双击播放（琴瑟模式）
+          if (this.onPlay) {
+            this.onPlay(this.song)
+          }
+        })
+    )
+    .onClick(() => {
+      // 单击：仅轩窗模式播放，琴瑟模式单击不操作
+      if (!this.doubleTapToPlay) {
+        if (this.onPlay) {
+          this.onPlay(this.song)
+        }
+      }
+    })
   }
 }

@@ -1,7 +1,8 @@
-// LX-HM 顶部导航栏组件
+// SHMY 顶部导航栏组件
 // AppHeader.ets - 可见Tab栏，固定顶部
 
 const PRIMARY_COLOR: string = '#007DFF'
+const TEXT_PRIMARY: string = '#1A1A1A'
 
 @Component
 export struct AppHeader {
@@ -10,12 +11,21 @@ export struct AppHeader {
 
   build() {
     Row() {
-      // Logo
-      Text('LX-HM')
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor('#1A1A1A')
-        .margin({ right: 20 })
+      // 左侧：Logo + SHMY MUSIC
+      Row({ space: 6 }) {
+        Image($r('app.media.logo'))
+          .width(28)
+          .height(28)
+          .borderRadius(6)
+          .objectFit(ImageFit.Cover)
+
+        Text('SHMY MUSIC')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(TEXT_PRIMARY)
+          .letterSpacing(1)
+      }
+      .margin({ right: 12 })
 
       // 占位，将Tab推向右侧
       Row()

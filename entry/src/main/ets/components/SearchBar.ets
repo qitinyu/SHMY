@@ -1,4 +1,4 @@
-// LX-HM 搜索栏组件
+// SHMY 搜索栏组件
 // SearchBar.ets
 
 const PRIMARY_COLOR: string = '#007DFF'
@@ -6,7 +6,7 @@ const SEARCH_BG: string = '#F0F0F0'
 
 @Component
 export struct SearchBar {
-  keyword: string = ''
+  @Prop keyword: string = ''
   onKeywordChange?: (keyword: string) => void
   onSearch?: (keyword: string) => void
   onClear?: () => void
@@ -19,7 +19,7 @@ export struct SearchBar {
         .margin({ left: 12 })
 
       // 搜索输入框
-      TextInput({ placeholder: '搜索歌曲、歌手', text: this.keyword })
+      TextInput({ placeholder: '\u641C\u7D22\u6B4C\u66F2\u3001\u6B4C\u624B', text: this.keyword })
         .layoutWeight(1)
         .height(36)
         .backgroundColor(Color.Transparent)
@@ -28,7 +28,6 @@ export struct SearchBar {
         .placeholderColor('#999999')
         .placeholderFont({ size: 14 })
         .onChange((value: string) => {
-          this.keyword = value
           if (this.onKeywordChange) {
             this.onKeywordChange(value)
           }
@@ -46,10 +45,6 @@ export struct SearchBar {
           .fontColor('#999999')
           .margin({ right: 4 })
           .onClick(() => {
-            this.keyword = ''
-            if (this.onKeywordChange) {
-              this.onKeywordChange('')
-            }
             if (this.onClear) {
               this.onClear()
             }
@@ -57,7 +52,7 @@ export struct SearchBar {
       }
 
       // 搜索按钮
-      Button('搜索')
+      Button('\u641C\u7D22')
         .height(32)
         .padding({ left: 14, right: 14 })
         .fontSize(14)

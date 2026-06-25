@@ -3,7 +3,7 @@
 import { relationalStore } from '@kit.ArkData'
 import type { SongInfo, Playlist, DownloadItem } from '../model/MusicModel'
 
-const DB_NAME = 'lxhm.db'
+const DB_NAME = 'shmy.db'
 const DB_VERSION = 1
 
 // 建表 SQL

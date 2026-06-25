@@ -1,4 +1,4 @@
-// LX-HM 公告弹窗组件 - 悬浮卡片样式
+// SHMY 公告弹窗组件 - 悬浮卡片样式
 // StartupDialog.ets
 
 const PRIMARY_COLOR: string = '#007DFF'
@@ -37,38 +37,29 @@ export struct StartupDialog {
 
         // 悬浮卡片
         Column() {
-          // 渐变头部
-          Stack() {
-            Column({ space: 6 }) {
-              // 音乐符号图标
-              Text('\u266A')
-                .fontSize(28)
-                .fontColor('#FFFFFF')
+          // 渐变头部 - 去掉"x"关闭按钮
+          Column({ space: 8 }) {
+            // Logo图片
+            Image($r('app.media.logo'))
+              .width(56)
+              .height(56)
+              .borderRadius(14)
+              .objectFit(ImageFit.Cover)
+              .shadow({ radius: 12, color: '#00000040', offsetY: 4 })
 
-              Text('LX-HM 音乐播放器')
-                .fontSize(20)
-                .fontColor(Color.White)
-                .fontWeight(FontWeight.Bold)
+            Text('SHMY MUSIC')
+              .fontSize(22)
+              .fontColor(Color.White)
+              .fontWeight(FontWeight.Bold)
+              .letterSpacing(2)
 
-              Text('轩窗 \u00B7 琴瑟 \u00B7 陋室')
-                .fontSize(13)
-                .fontColor('#FFFFFFB3')
-            }
-            .alignItems(HorizontalAlign.Center)
-
-            // 关闭按钮
-            Text('\u2715')
-              .fontSize(20)
-              .fontColor('#FFFFFFCC')
-              .width(36)
-              .height(36)
-              .textAlign(TextAlign.Center)
-              .onClick(() => {
-                this.doDismiss()
-              })
+            Text('\u8F69\u7A97 \u00B7 \u7434\u745F \u00B7 \u964B\u5BA4')
+              .fontSize(13)
+              .fontColor('#FFFFFFB3')
           }
+          .alignItems(HorizontalAlign.Center)
           .width('100%')
-          .padding({ top: 28, bottom: 24, left: 20, right: 20 })
+          .padding({ top: 32, bottom: 24, left: 20, right: 20 })
           .linearGradient({
             direction: GradientDirection.Bottom,
             colors: [[PRIMARY_COLOR, 0], ['#0059B3', 1]],
@@ -76,7 +67,7 @@ export struct StartupDialog {
 
           // 版本信息
           Row() {
-            Text('最新版本')
+            Text('\u6700\u65B0\u7248\u672C')
               .fontSize(14)
               .fontColor(TEXT_SECONDARY)
               .layoutWeight(1)
@@ -91,12 +82,12 @@ export struct StartupDialog {
 
           // 更新地址
           Row() {
-            Text('更新地址')
+            Text('\u66F4\u65B0\u5730\u5740')
               .fontSize(14)
               .fontColor(TEXT_SECONDARY)
               .layoutWeight(1)
 
-            Text('github.com/LX-HM/releases')
+            Text('github.com/SHMY/releases')
               .fontSize(12)
               .fontColor(PRIMARY_COLOR)
               .maxLines(1)
@@ -114,7 +105,7 @@ export struct StartupDialog {
             .margin({ top: 16, bottom: 4 })
 
           // 更新内容标题
-          Text('V1.0.1 更新内容')
+          Text('V1.0.1 \u66F4\u65B0\u5185\u5BB9')
             .fontSize(15)
             .fontColor(TEXT_PRIMARY)
             .fontWeight(FontWeight.Bold)
@@ -146,7 +137,7 @@ export struct StartupDialog {
           // 底部操作区
           Column({ space: 12 }) {
             // 开始使用按钮
-            Button('开始使用')
+            Button('\u5F00\u59CB\u4F7F\u7528')
               .width('100%')
               .height(46)
               .fontSize(16)
@@ -178,7 +169,7 @@ export struct StartupDialog {
                 this.dontShowToday = !this.dontShowToday
               })
 
-              Text('今日不再弹出')
+              Text('\u4ECA\u65E5\u4E0D\u518D\u5F39\u51FA')
                 .fontSize(13)
                 .fontColor(TEXT_SECONDARY)
             }

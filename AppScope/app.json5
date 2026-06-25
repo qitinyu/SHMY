@@ -1,10 +1,10 @@
 {
   "app": {
-    "bundleName": "com.lxhm.music",
-    "vendor": "LX-HM",
+    "bundleName": "com.shmy.music",
+    "vendor": "SHMY",
     "versionCode": 1000001,
     "versionName": "1.0.1",
     "icon": "$media:app_icon",
-    "label": "$string:app_name",
+    "label": "$string:app_name"
   }
 }

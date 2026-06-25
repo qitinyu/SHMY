@@ -1,4 +1,4 @@
-// LX-HM 空状态占位组件
+// SHMY 空状态占位组件
 // EmptyState.ets
 
 const TEXT_PRIMARY: string = '#1A1A1A'
