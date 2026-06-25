@@ -1,0 +1,132 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "LX-HM 鸿蒙原生音乐播放器"
+    },
+    {
+      "name": "entryability_desc",
+      "value": "LX-HM 主入口"
+    },
+    {
+      "name": "tab_xuanchuang",
+      "value": "轩窗"
+    },
+    {
+      "name": "tab_qinse",
+      "value": "琴瑟"
+    },
+    {
+      "name": "tab_loushi",
+      "value": "陋室"
+    },
+    {
+      "name": "search_placeholder",
+      "value": "搜索歌曲、歌手..."
+    },
+    {
+      "name": "my_music",
+      "value": "我的音乐"
+    },
+    {
+      "name": "favorites",
+      "value": "个人收藏"
+    },
+    {
+      "name": "custom_playlists",
+      "value": "自建歌单"
+    },
+    {
+      "name": "download_list",
+      "value": "下载列表"
+    },
+    {
+      "name": "settings",
+      "value": "设置"
+    },
+    {
+      "name": "source_all",
+      "value": "全部"
+    },
+    {
+      "name": "source_kg",
+      "value": "小狗"
+    },
+    {
+      "name": "source_kw",
+      "value": "小我"
+    },
+    {
+      "name": "source_wy",
+      "value": "小云"
+    },
+    {
+      "name": "source_qq",
+      "value": "小鹅"
+    },
+    {
+      "name": "no_favorites",
+      "value": "暂无收藏歌曲"
+    },
+    {
+      "name": "long_press_hint",
+      "value": "长按搜索结果中的歌曲即可收藏"
+    },
+    {
+      "name": "no_playlists",
+      "value": "暂无歌单，点击 + 创建"
+    },
+    {
+      "name": "no_downloads",
+      "value": "暂无下载"
+    },
+    {
+      "name": "no_results",
+      "value": "未找到相关歌曲"
+    },
+    {
+      "name": "try_other",
+      "value": "试试其他关键词或切换音源"
+    },
+    {
+      "name": "search_hint",
+      "value": "搜索你喜欢的音乐"
+    },
+    {
+      "name": "search_desc",
+      "value": "支持酷狗、酷我、网易云、QQ音乐"
+    },
+    {
+      "name": "version_info",
+      "value": "V1.0.0"
+    },
+    {
+      "name": "startup_desc",
+      "value": "轩窗 · 琴瑟 · 陋室"
+    },
+    {
+      "name": "start_using",
+      "value": "开始使用"
+    },
+    {
+      "name": "update_content",
+      "value": "V1.0.0 更新内容"
+    },
+    {
+      "name": "contact_email",
+      "value": "484894496@qq.com"
+    },
+    {
+      "name": "permission_read_media_reason",
+      "value": "用于读取本地音乐文件"
+    },
+    {
+      "name": "permission_write_media_reason",
+      "value": "用于下载和缓存音乐文件"
+    },
+    {
+      "name": "permission_file_access_reason",
+      "value": "用于管理音乐下载目录"
+    }
+  ]
+}
