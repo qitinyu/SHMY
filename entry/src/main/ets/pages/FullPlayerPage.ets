@@ -98,7 +98,7 @@ struct FullPlayerPage {
     // 获取播放链接
     let playUrl = track.playUrl
     if (!playUrl) {
-      playUrl = await MusicApi.getPlayUrl(track.songId, track.source)
+      playUrl = await MusicApi.getPlayUrl(track)
     }
     if (!playUrl) {
       PlayerStore.pause()
@@ -253,10 +253,9 @@ struct FullPlayerPage {
         // Top bar with back button
         Row({ space: 12 }) {
           Row() {
-            Text('\u2039')
-              .fontSize(28)
-              .fontColor(TEXT_PRIMARY)
-              .fontWeight(FontWeight.Bold)
+            SymbolGlyph($r('sys.symbol.chevron_left'))
+              .fontSize(26)
+              .fontColor([TEXT_PRIMARY])
           }
           .width(40)
           .height(40)
@@ -318,8 +317,10 @@ struct FullPlayerPage {
           this.ControlBar()
         } else {
           Column() {
-            Text('\uD83C\uDFB5')
-              .fontSize(64)
+            Image($r('app.media.music_note'))
+              .width(64)
+              .height(64)
+              .fillColor(TEXT_SECONDARY)
               .opacity(0.3)
             Text('暂无播放内容')
               .fontSize(15)
@@ -419,8 +420,9 @@ struct FullPlayerPage {
   LyricsView() {
     if (this.lyrics.length === 0) {
       Column() {
-        Text('\uD83C\uDFBC')
+        SymbolGlyph($r('sys.symbol.mic'))
           .fontSize(48)
+          .fontColor([TEXT_SECONDARY])
           .opacity(0.3)
         Text('暂无歌词')
           .fontSize(15)
@@ -461,29 +463,34 @@ struct FullPlayerPage {
       // Control buttons
       Row({ space: 32 }) {
         // Shuffle
-        Text('\uD83D\uDD00')
-          .fontSize(22)
-          .opacity(0.6)
-          .width(40)
-          .height(40)
-          .textAlign(TextAlign.Center)
+        Row() {
+          SymbolGlyph($r('sys.symbol.shuffle'))
+            .fontSize(22)
+            .fontColor([TEXT_PRIMARY])
+            .opacity(0.6)
+        }
+        .width(40)
+        .height(40)
+        .justifyContent(FlexAlign.Center)
 
         // Previous
-        Text('\u23EE')
-          .fontSize(26)
-          .fontColor(TEXT_PRIMARY)
-          .width(48)
-          .height(48)
-          .textAlign(TextAlign.Center)
-          .onClick(() => {
-            this.handlePrevious()
-          })
+        Row() {
+          SymbolGlyph($r('sys.symbol.backward_fill'))
+            .fontSize(28)
+            .fontColor([TEXT_PRIMARY])
+        }
+        .width(48)
+        .height(48)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          this.handlePrevious()
+        })
 
         // Play/Pause
         Row() {
-          Text(this.isPlaying ? '\u23F8' : '\u25B6')
-            .fontSize(22)
-            .fontColor(Color.White)
+          SymbolGlyph(this.isPlaying ? $r('sys.symbol.pause_fill') : $r('sys.symbol.play_fill'))
+            .fontSize(24)
+            .fontColor([Color.White])
         }
         .width(60)
         .height(60)
@@ -496,23 +503,28 @@ struct FullPlayerPage {
         })
 
         // Next
-        Text('\u23ED')
-          .fontSize(26)
-          .fontColor(TEXT_PRIMARY)
-          .width(48)
-          .height(48)
-          .textAlign(TextAlign.Center)
-          .onClick(() => {
-            this.handleNext()
-          })
+        Row() {
+          SymbolGlyph($r('sys.symbol.forward_end_fill'))
+            .fontSize(28)
+            .fontColor([TEXT_PRIMARY])
+        }
+        .width(48)
+        .height(48)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          this.handleNext()
+        })
 
         // Repeat
-        Text('\uD83D\uDD01')
-          .fontSize(22)
-          .opacity(0.6)
-          .width(40)
-          .height(40)
-          .textAlign(TextAlign.Center)
+        Row() {
+          SymbolGlyph($r('sys.symbol.repeat'))
+            .fontSize(22)
+            .fontColor([TEXT_PRIMARY])
+            .opacity(0.6)
+        }
+        .width(40)
+        .height(40)
+        .justifyContent(FlexAlign.Center)
       }
       .width('100%')
       .justifyContent(FlexAlign.Center)

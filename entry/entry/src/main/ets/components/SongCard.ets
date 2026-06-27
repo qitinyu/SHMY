@@ -9,13 +9,11 @@ const TEXT_SECONDARY: string = '#999999'
 @Component
 export struct SongCard {
   song: SongInfo = createEmptySongInfo()
-  onPlay?: (song: SongInfo) => void
-  onMore?: (song: SongInfo) => void
+  onPlay: (song: SongInfo) => void = (_s: SongInfo) => {}
+  onMore: (song: SongInfo) => void = (_s: SongInfo) => {}
 
   // 保留字段以兼容现有调用，但不再影响手势行为
   doubleTapToPlay: boolean = false
-
-  @State private isPressed: boolean = false
 
   build() {
     Row({ space: 10 }) {
@@ -29,7 +27,7 @@ export struct SongCard {
         .flexShrink(0)
         .alt($r('app.media.music_note'))
 
-      // 右侧信息区
+      // 右侧信息区 — 点击播放
       Column({ space: 3 }) {
         Text(this.song.songName)
           .fontSize(14)
@@ -59,48 +57,27 @@ export struct SongCard {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
+      .onClick(() => {
+        this.onPlay(this.song)
+      })
 
       // 右侧更多按钮
-      if (this.onMore) {
-        Row() {
-          Image($r('app.media.icon_ellipsis'))
-            .width(18)
-            .height(18)
-            .fillColor(TEXT_SECONDARY)
-        }
-        .width(36)
-        .height(48)
-        .justifyContent(FlexAlign.Center)
-        .onClick(() => {
-          if (this.onMore) {
-            this.onMore(this.song)
-          }
-        })
+      Row() {
+        Image($r('app.media.icon_ellipsis'))
+          .width(18)
+          .height(18)
+          .fillColor(TEXT_SECONDARY)
       }
+      .width(36)
+      .height(48)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => {
+        this.onMore(this.song)
+      })
     }
     .width('100%')
     .padding({ left: 12, right: 8, top: 8, bottom: 8 })
     .borderRadius(10)
     .backgroundColor(CARD_BG)
-    .scale({ x: this.isPressed ? 0.97 : 1, y: this.isPressed ? 0.97 : 1 })
-    .animation({ duration: 150 })
-    .gesture(
-      GestureGroup(GestureMode.Parallel,
-        // 长按 → 打开操作菜单
-        LongPressGesture({ repeat: false, duration: 500 })
-          .onAction(() => {
-            if (this.onMore) {
-              this.onMore(this.song)
-            }
-          }),
-        // 单击 → 播放（所有模式统一）
-        TapGesture({ count: 1 })
-          .onAction(() => {
-            if (this.onPlay) {
-              this.onPlay(this.song)
-            }
-          }),
-      )
-    )
   }
 }

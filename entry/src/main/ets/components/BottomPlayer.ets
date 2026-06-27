@@ -94,21 +94,23 @@ export struct BottomPlayer {
           .layoutWeight(1)
 
           // 上一首按钮
-          Text('\u23EE')
-            .fontSize(18)
-            .fontColor(TEXT_PRIMARY)
-            .width(32)
-            .height(32)
-            .textAlign(TextAlign.Center)
-            .onClick(() => {
-              PlayerStore.previous()
-            })
+          Row() {
+            SymbolGlyph($r('sys.symbol.backward_fill'))
+              .fontSize(20)
+              .fontColor([TEXT_PRIMARY])
+          }
+          .width(32)
+          .height(32)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            PlayerStore.previous()
+          })
 
           // 播放/暂停按钮
           Row() {
-            Text(this.isPlaying ? '\u23F8' : '\u25B6')
-              .fontSize(14)
-              .fontColor(Color.White)
+            SymbolGlyph(this.isPlaying ? $r('sys.symbol.pause_fill') : $r('sys.symbol.play_fill'))
+              .fontSize(16)
+              .fontColor([Color.White])
           }
           .width(40)
           .height(40)
@@ -121,15 +123,17 @@ export struct BottomPlayer {
           })
 
           // 下一首按钮
-          Text('\u23ED')
-            .fontSize(18)
-            .fontColor(TEXT_PRIMARY)
-            .width(32)
-            .height(32)
-            .textAlign(TextAlign.Center)
-            .onClick(() => {
-              PlayerStore.next()
-            })
+          Row() {
+            SymbolGlyph($r('sys.symbol.forward_end_fill'))
+              .fontSize(20)
+              .fontColor([TEXT_PRIMARY])
+          }
+          .width(32)
+          .height(32)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            PlayerStore.next()
+          })
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8, bottom: 8 })

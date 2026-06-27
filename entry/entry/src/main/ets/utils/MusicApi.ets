@@ -48,7 +48,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 async function httpGet(url: string, extraHeaders?: Record<string, string>): Promise<string> {
   try {
-    const headerObj: Record<string, string> = { 'User-Agent': UA }
+    const headerObj: Record<string, string> = { 'User-Agent': UA } as Record<string, string>
     if (extraHeaders) {
       const keys = Object.keys(extraHeaders)
       for (let i = 0; i < keys.length; i++) {
@@ -399,32 +399,33 @@ export class MusicApi {
     try {
       const source = song.source
 
+      // 酷我歌曲 — 直接用 rid 获取
+      if (source === 'kw') {
+        const url = await getKuwoPlayUrl(song.songId)
+        if (url.length > 0) return url
+        console.warn(`[MusicApi] Kuwo direct play failed, trying fallback: ${song.songName}`)
+        return await MusicApi.fallbackToKuwo(song)
+      }
+
+      // 酷狗歌曲 — 播放 API 地域限制，用歌名在酷我曲库搜索
+      if (source === 'kg') {
+        const url = await MusicApi.fallbackToKuwo(song)
+        if (url.length > 0) return url
+        // 酷我也失败，尝试自定义音源
+        return await MusicApi.fallbackToCustom(song)
+      }
+
       // 自定义音源
       if (source.startsWith('custom_')) {
         const configName = source.substring(7)
         const url = await SourceManager.getPlayUrl(configName, song.songId)
         if (url.length > 0) return url
-        // 回退到酷我
+        // 自定义音源失败，回退到酷我
         return await MusicApi.fallbackToKuwo(song)
       }
 
-      // 酷我
-      if (source === 'kw') {
-        const url = await getKuwoPlayUrl(song.songId)
-        if (url.length > 0) return url
-        // 酷我失败，尝试自定义音源
-        return await MusicApi.fallbackToCustom(song)
-      }
-
-      // 酷狗
-      if (source === 'kg') {
-        // 酷狗播放 API 地域限制，直接回退到酷我
-        const url = await MusicApi.fallbackToKuwo(song)
-        if (url.length > 0) return url
-        return await MusicApi.fallbackToCustom(song)
-      }
-
-      return ''
+      // 未知来源 — 直接尝试酷我
+      return await MusicApi.fallbackToKuwo(song)
     } catch (_e) {
       console.error('[MusicApi] getPlayUrl failed')
       return ''
@@ -432,20 +433,29 @@ export class MusicApi {
   }
 
   /**
-   * 回退到酷我：用歌名+歌手搜索酷我，取第一首的 rid 获取播放 URL
+   * 回退到酷我：用歌名+歌手搜索酷我曲库，优先选择歌名完全匹配的结果
    */
   private static async fallbackToKuwo(song: SongInfo): Promise<string> {
     const keyword = `${song.songName} ${song.artist}`.trim()
     if (keyword.length === 0) return ''
 
-    const results = await searchKuwo(keyword, 5)
+    const results = await searchKuwo(keyword, 10)
     if (results.length === 0) return ''
 
-    // 取第一个结果的 rid
-    const rid = results[0].songId
-    const url = await getKuwoPlayUrl(rid)
+    // 优先选择歌名完全匹配的结果
+    let bestRid: string = results[0].songId
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].songName === song.songName) {
+        bestRid = results[i].songId
+        break
+      }
+    }
+
+    const url = await getKuwoPlayUrl(bestRid)
     if (url.length > 0) {
-      console.info(`[MusicApi] Fallback to Kuwo OK: "${song.songName}" -> rid=${rid}`)
+      console.info(`[MusicApi] Fallback to Kuwo OK: "${song.songName}" -> rid=${bestRid}`)
+    } else {
+      console.warn(`[MusicApi] Fallback to Kuwo failed: "${song.songName}" rid=${bestRid}`)
     }
     return url
   }

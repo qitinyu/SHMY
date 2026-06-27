@@ -16,27 +16,27 @@ const TEXT_SECONDARY: string = '#999999'
 const CARD_BG: string = '#F5F5F5'
 
 interface ActionItem {
-  icon: string
+  icon: Resource
   label: string
   action: string
 }
 
 // 完整模式操作列表（轩窗版块用）
 const FULL_ACTION_LIST: ActionItem[] = [
-  { icon: '\u25B6\uFE0F', label: '\u64AD\u653E', action: 'play' },
-  { icon: '\u2764\uFE0F', label: '\u6536\u85CF', action: 'favorite' },
-  { icon: '\u23F1', label: '\u7A0D\u540E\u64AD\u653E', action: 'later' },
-  { icon: '\uD83D\uDD17', label: '\u5206\u4EAB', action: 'share' },
-  { icon: '\uD83C\uDFB5', label: '\u6DFB\u52A0\u5230\u6B4C\u5355', action: 'playlist' },
-  { icon: '\uD83D\uDCE5', label: '\u4E0B\u8F7D', action: 'download' },
+  { icon: $r('sys.symbol.play_fill'), label: '\u64AD\u653E', action: 'play' },
+  { icon: $r('sys.symbol.heart'), label: '\u6536\u85CF', action: 'favorite' },
+  { icon: $r('sys.symbol.clock'), label: '\u7A0D\u540E\u64AD\u653E', action: 'later' },
+  { icon: $r('sys.symbol.share'), label: '\u5206\u4EAB', action: 'share' },
+  { icon: $r('sys.symbol.list_bullet'), label: '\u6DFB\u52A0\u5230\u6B4C\u5355', action: 'playlist' },
+  { icon: $r('sys.symbol.arrow_down_circle'), label: '\u4E0B\u8F7D', action: 'download' },
 ]
 
 // 搜索模式操作列表（琴瑟版块用）
 const SEARCH_ACTION_LIST: ActionItem[] = [
-  { icon: '\uD83C\uDFB5', label: '\u52A0\u5165\u6B4C\u5355', action: 'playlist' },
-  { icon: '\u2764\uFE0F', label: '\u6DFB\u52A0\u6536\u85CF', action: 'favorite' },
-  { icon: '\u23ED', label: '\u4E0B\u66F2\u64AD\u653E', action: 'play_next' },
-  { icon: '\uD83D\uDCE5', label: '\u6B4C\u66F2\u4E0B\u8F7D', action: 'auto_download' },
+  { icon: $r('sys.symbol.list_bullet'), label: '\u52A0\u5165\u6B4C\u5355', action: 'playlist' },
+  { icon: $r('sys.symbol.heart'), label: '\u6DFB\u52A0\u6536\u85CF', action: 'favorite' },
+  { icon: $r('sys.symbol.forward_end_fill'), label: '\u4E0B\u66F2\u64AD\u653E', action: 'play_next' },
+  { icon: $r('sys.symbol.arrow_down_circle'), label: '\u6B4C\u66F2\u4E0B\u8F7D', action: 'auto_download' },
 ]
 
 // 下载音质选项
@@ -161,7 +161,7 @@ export struct SongActionSheet {
       // 获取播放URL
       let playUrl = song.playUrl
       if (!playUrl) {
-        playUrl = await MusicApi.getPlayUrl(song.songId, song.source, quality)
+        playUrl = await MusicApi.getPlayUrl(song)
       }
       if (!playUrl) {
         await this.db.updateDownloadStatus(downloadId, 'failed', 0)
@@ -224,7 +224,7 @@ export struct SongActionSheet {
 
   private async doShare(): Promise<void> {
     try {
-      let shareText = `\uD83C\uDFB5 ${this.song.songName} - ${this.song.artist}`
+      let shareText = `♫ ${this.song.songName} - ${this.song.artist}`
       if (this.song.playUrl) {
         shareText += `\n\u64AD\u653E\u94FE\u63A5: ${this.song.playUrl}`
       }
@@ -276,7 +276,7 @@ export struct SongActionSheet {
           .width(1)
           .height(1)
           .bindSheet($$this.sheetVisible, this.SheetContent(), {
-            height: SheetSize.LARGE,
+            height: this.mode === 'search' ? SheetSize.FIT_CONTENT : SheetSize.MEDIUM,
             dragBar: true,
             showClose: true,
             backgroundColor: '#F8F8FA',
@@ -385,8 +385,7 @@ export struct SongActionSheet {
         ForEach(this.getActionList(), (item: ActionItem) => {
           GridCol() {
             Row({ space: 8 }) {
-              Text(item.icon)
-                .fontSize(18)
+              SymbolGlyph(item.icon).fontSize(18)
 
               Text(item.label)
                 .fontSize(14)
@@ -486,8 +485,7 @@ export struct SongActionSheet {
         ForEach(this.playlists, (playlist: Playlist) => {
           Row({ space: 12 }) {
             Row() {
-              Text('\uD83C\uDFB5')
-                .fontSize(18)
+              SymbolGlyph($r('sys.symbol.list_bullet')).fontSize(18)
             }
             .width(36)
             .height(36)
@@ -610,9 +608,9 @@ export struct SongActionSheet {
             .fontColor(TEXT_PRIMARY)
             .layoutWeight(1)
 
-          Text('\u27A4')
+          SymbolGlyph($r('sys.symbol.chevron_right'))
             .fontSize(16)
-            .fontColor(TEXT_SECONDARY)
+            .fontColor([TEXT_SECONDARY])
         }
         .width('100%')
         .padding({ left: 24, right: 24, top: 14, bottom: 14 })

@@ -14,8 +14,9 @@ export struct SearchBar {
   build() {
     Row({ space: 8 }) {
       // 搜索图标
-      Text('\uD83D\uDD0D')
+      SymbolGlyph($r('sys.symbol.magnifyingglass'))
         .fontSize(16)
+        .fontColor(['#999999'])
         .margin({ left: 12 })
 
       // 搜索输入框
@@ -40,9 +41,9 @@ export struct SearchBar {
 
       // 清除按钮
       if (this.keyword.length > 0) {
-        Text('\u2715')
+        SymbolGlyph($r('sys.symbol.xmark'))
           .fontSize(14)
-          .fontColor('#999999')
+          .fontColor(['#999999'])
           .margin({ right: 4 })
           .onClick(() => {
             if (this.onClear) {

@@ -3,6 +3,7 @@
 import { AppSettings, DEFAULT_SETTINGS, LYRICS_COLORS, LyricsColorItem } from '../model/MusicModel'
 import { DatabaseHelper } from '../database/DatabaseHelper'
 import { SettingItem } from '../components/SettingItem'
+import { SourceManager } from '../utils/SourceManager'
 import { picker } from '@kit.CoreFileKit'
 import { promptAction } from '@kit.ArkUI'
 
@@ -40,6 +41,7 @@ export struct LoushiTab {
 
   // Imported sources
   @State importedSources: string[] = []
+  @State sourceEnabled: string[] = []
 
   // Toast
   @State toastMsg: string = ''
@@ -80,39 +82,26 @@ export struct LoushiTab {
 
   private async importSource() {
     try {
+      const options = new picker.DocumentSelectOptions()
+      options.maxSelectNumber = 1
+      options.fileSuffixFilters = ['.json']
       const documentSelect = new picker.DocumentViewPicker()
-      const selectResult = await documentSelect.select({
-        maxSelectNumber: 1,
-      })
+      const selectResult = await documentSelect.select(options)
       if (selectResult && selectResult.length > 0) {
         const fileUri: string = selectResult[0]
-        let fileName: string = '\u672A\u77E5\u97F3\u6E90'
-        try {
-          const decoded: string = decodeURIComponent(fileUri)
-          const lastSlash: number = decoded.lastIndexOf('/')
-          if (lastSlash >= 0 && lastSlash < decoded.length - 1) {
-            fileName = decoded.substring(lastSlash + 1)
-          } else {
-            fileName = decoded
-          }
-        } catch (_e) {
-          const parts: string[] = fileUri.split('/')
-          fileName = parts[parts.length - 1] || '\u672A\u77E5\u97F3\u6E90'
+        const sourceName: string = await SourceManager.importFromFile(fileUri)
+        if (sourceName.length > 0) {
+          await this.loadImportedSources()
+          this.toastMsg = '已导入音源: ' + sourceName
+          this.showToast = true
+        } else {
+          this.toastMsg = '导入失败：配置文件格式错误'
+          this.showToast = true
         }
-        const dotIdx: number = fileName.lastIndexOf('.')
-        if (dotIdx > 0) {
-          fileName = fileName.substring(0, dotIdx)
-        }
-        this.importedSources = [...this.importedSources, fileName]
-        const idx: number = this.importedSources.length - 1
-        await this.db.setSetting('source_uri_' + idx, fileUri)
-        await this.db.setSetting('source_name_' + idx, fileName)
-        this.toastMsg = '\u5DF2\u5BFC\u5165: ' + fileName
-        this.showToast = true
       }
     } catch (e) {
       console.error('[LoushiTab] Import failed:', e)
-      this.toastMsg = '\u5BFC\u5165\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5'
+      this.toastMsg = '导入失败，请选择有效的 JSON 音源配置文件'
       this.showToast = true
     }
   }
@@ -138,17 +127,21 @@ export struct LoushiTab {
   }
 
   private async loadImportedSources() {
-    const sources: string[] = []
-    let idx: number = 0
-    while (true) {
-      const name: string = await this.db.getSetting('source_name_' + idx)
-      if (name.length === 0) {
-        break
+    SourceManager.setDatabaseOps(
+      (key: string) => this.db.getSetting(key),
+      (key: string, value: string) => this.db.setSetting(key, value)
+    )
+    await SourceManager.loadAll()
+    const names: string[] = SourceManager.getSourceNames()
+    this.importedSources = names
+    const enabled: string[] = []
+    for (let i = 0; i < names.length; i++) {
+      const val: string = await this.db.getSetting('source_enabled_' + names[i])
+      if (val !== 'false') {
+        enabled.push(names[i])
       }
-      sources.push(name)
-      idx++
     }
-    this.importedSources = sources
+    this.sourceEnabled = enabled
   }
 
   build() {
@@ -230,7 +223,6 @@ export struct LoushiTab {
   SourceSection() {
     Column() {
       Row({ space: 8 }) {
-        Text('\uD83D\uDCE5').fontSize(16)
         Text('\u5BFC\u5165\u97F3\u6E90')
           .fontSize(15)
           .fontColor(PRIMARY_COLOR)
@@ -242,7 +234,7 @@ export struct LoushiTab {
       .onClick(() => { this.importSource() })
 
       if (this.importedSources.length === 0) {
-        Text('\u6682\u65E0\u81EA\u5B9A\u4E49\u97F3\u6E90')
+        Text('暂无自定义音源，点击导入 JSON 配置文件')
           .fontSize(13)
           .fontColor(TEXT_SECONDARY)
           .width('100%')
@@ -254,8 +246,24 @@ export struct LoushiTab {
               .fontSize(14)
               .fontColor(TEXT_PRIMARY)
               .layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: true })
+            Toggle({ type: ToggleType.Switch, isOn: this.sourceEnabled.includes(source) })
               .selectedColor(PRIMARY_COLOR)
+              .onChange((isOn: boolean) => {
+                if (isOn) {
+                  if (!this.sourceEnabled.includes(source)) {
+                    this.sourceEnabled = [...this.sourceEnabled, source]
+                  }
+                } else {
+                  const newList: string[] = []
+                  for (let i = 0; i < this.sourceEnabled.length; i++) {
+                    if (this.sourceEnabled[i] !== source) {
+                      newList.push(this.sourceEnabled[i])
+                    }
+                  }
+                  this.sourceEnabled = newList
+                }
+                this.db.setSetting('source_enabled_' + source, String(isOn))
+              })
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 12, bottom: 12 })
@@ -270,34 +278,10 @@ export struct LoushiTab {
   PersonalizationSection() {
     Column() {
       // Theme selector
-      this.SettingRow('\uD83C\uDFA8', '#FFF3E0', '\u4E3B\u9898')
+      this.SettingRow($r('sys.symbol.paintpalette'), '#FFF3E0', '\u4E3B\u9898')
       Row({ space: 8 }) {
-        // 浅色
-        Text('\u6D45\u8272')
-          .fontSize(13)
-          .fontColor(this.theme === 'light' ? PRIMARY_COLOR : TEXT_SECONDARY)
-          .fontWeight(this.theme === 'light' ? FontWeight.Medium : FontWeight.Normal)
-          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-          .borderRadius(16)
-          .backgroundColor('#FFFFFF')
-          .border({ width: 1, color: this.theme === 'light' ? PRIMARY_COLOR : DIVIDER_COLOR })
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .onClick(() => { this.theme = 'light'; this.saveSetting('theme', 'light') })
-        // 深色
-        Text('\u6DF1\u8272')
-          .fontSize(13)
-          .fontColor(this.theme === 'dark' ? PRIMARY_COLOR : TEXT_SECONDARY)
-          .fontWeight(this.theme === 'dark' ? FontWeight.Medium : FontWeight.Normal)
-          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-          .borderRadius(16)
-          .backgroundColor('#1A1A1A')
-          .border({ width: 1, color: this.theme === 'dark' ? PRIMARY_COLOR : DIVIDER_COLOR })
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .onClick(() => { this.theme = 'dark'; this.saveSetting('theme', 'dark') })
-        // 跟随系统
-        Text('\u8DDF\u968F\u7CFB\u7EDF')
+        // 系统
+        Text('\u7CFB\u7EDF')
           .fontSize(13)
           .fontColor(this.theme === 'system' ? PRIMARY_COLOR : TEXT_SECONDARY)
           .fontWeight(this.theme === 'system' ? FontWeight.Medium : FontWeight.Normal)
@@ -308,6 +292,30 @@ export struct LoushiTab {
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
           .onClick(() => { this.theme = 'system'; this.saveSetting('theme', 'system') })
+        // 奶白
+        Text('\u5976\u767D')
+          .fontSize(13)
+          .fontColor(this.theme === 'naibai' ? PRIMARY_COLOR : TEXT_SECONDARY)
+          .fontWeight(this.theme === 'naibai' ? FontWeight.Medium : FontWeight.Normal)
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .borderRadius(16)
+          .backgroundColor('#FFF8F0')
+          .border({ width: 1, color: this.theme === 'naibai' ? PRIMARY_COLOR : DIVIDER_COLOR })
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+          .onClick(() => { this.theme = 'naibai'; this.saveSetting('theme', 'naibai') })
+        // 简白
+        Text('\u7B80\u767D')
+          .fontSize(13)
+          .fontColor(this.theme === 'jianbai' ? PRIMARY_COLOR : TEXT_SECONDARY)
+          .fontWeight(this.theme === 'jianbai' ? FontWeight.Medium : FontWeight.Normal)
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .borderRadius(16)
+          .backgroundColor('#FFFFFF')
+          .border({ width: 1, color: this.theme === 'jianbai' ? PRIMARY_COLOR : DIVIDER_COLOR })
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+          .onClick(() => { this.theme = 'jianbai'; this.saveSetting('theme', 'jianbai') })
       }
       .width('100%')
       .padding({ left: 40, right: 16, bottom: 12 })
@@ -316,8 +324,7 @@ export struct LoushiTab {
 
       // Custom background
       SettingItem({
-        icon: '\uD83D\uDDBC\uFE0F',
-        iconBgColor: '#E3F2FD',
+        icon: $r('app.media.music_note'), iconBgColor: '#E3F2FD', useImage: true,
         title: '\u81EA\u5B9A\u4E49\u80CC\u666F',
         description: this.customBackground ? '\u5DF2\u8BBE\u7F6E\u80CC\u666F\u56FE' : '\u8BBE\u7F6E\u5E94\u7528\u81EA\u5B9A\u4E49\u80CC\u666F\u56FE',
         hasSwitch: true,
@@ -335,7 +342,7 @@ export struct LoushiTab {
 
       // System font
       SettingItem({
-        icon: '\uD83D\uDD24',
+        icon: $r('sys.symbol.textformat'),
         iconBgColor: '#F3E5F5',
         title: '\u4F7F\u7528\u7CFB\u7EDF\u5B57\u4F53',
         description: '\u4F7F\u7528\u8BBE\u5907\u7CFB\u7EDF\u9ED8\u8BA4\u5B57\u4F53',
@@ -350,7 +357,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       // Font size - inline to ensure reactivity
-      this.SettingRow('\uD83D\uDCDD', '#E8F5E9', '\u5B57\u4F53\u5927\u5C0F')
+      this.SettingRow($r('sys.symbol.textformat'), '#E8F5E9', '\u5B57\u4F53\u5927\u5C0F')
       Row({ space: 8 }) {
         Text('\u5C0F')
           .fontSize(13)
@@ -400,7 +407,7 @@ export struct LoushiTab {
   PlayerSection() {
     Column() {
       SettingItem({
-        icon: '\u25B6\uFE0F', iconBgColor: '#FFF8E1',
+        icon: $r('sys.symbol.play_circle'), iconBgColor: '#FFF8E1',
         title: '\u81EA\u52A8\u64AD\u653E', description: '\u6253\u5F00\u5E94\u7528\u65F6\u81EA\u52A8\u64AD\u653E\u4E0A\u6B21\u6B4C\u66F2',
         hasSwitch: true, switchChecked: this.autoPlay,
         onSwitchChange: (c: boolean) => { this.autoPlay = c; this.saveSetting('autoPlay', String(c)) },
@@ -408,7 +415,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       SettingItem({
-        icon: '\uD83D\uDD00', iconBgColor: '#E8EAF6',
+        icon: $r('app.media.icon_shuffle'), iconBgColor: '#E8EAF6', useImage: true,
         title: '\u81EA\u52A8\u8DF3\u8F6C\u8BE6\u60C5', description: '\u70B9\u51FB\u5E95\u90E8\u64AD\u653E\u5668\u65F6\u6253\u5F00\u5B8C\u6574\u64AD\u653E\u9875',
         hasSwitch: true, switchChecked: this.autoJumpDetail,
         onSwitchChange: (c: boolean) => { this.autoJumpDetail = c; this.saveSetting('autoJumpDetail', String(c)) },
@@ -416,7 +423,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       // Lyrics position - inline
-      this.SettingRow('\uD83D\uDCCD', '#FCE4EC', '\u6B4C\u8BCD\u4F4D\u7F6E')
+      this.SettingRow($r('sys.symbol.text_alignleft'), '#FCE4EC', '\u6B4C\u8BCD\u4F4D\u7F6E')
       Row({ space: 8 }) {
         Text('\u5DE6')
           .fontSize(13)
@@ -454,7 +461,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       SettingItem({
-        icon: '\uD83D\uDCBE', iconBgColor: '#E0F7FA',
+        icon: $r('app.media.icon_clock'), iconBgColor: '#E0F7FA', useImage: true,
         title: '\u8BB0\u4F4F\u64AD\u653E\u8FDB\u5EA6', description: '\u4E0B\u6B21\u6253\u5F00\u65F6\u4ECE\u4E0A\u6B21\u7684\u4F4D\u7F6E\u7EE7\u7EED\u64AD\u653E',
         hasSwitch: true, switchChecked: this.rememberProgress,
         onSwitchChange: (c: boolean) => { this.rememberProgress = c; this.saveSetting('rememberProgress', String(c)) },
@@ -462,7 +469,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       SettingItem({
-        icon: '\uD83D\uDD07', iconBgColor: '#FFF3E0',
+        icon: $r('app.media.icon_pause'), iconBgColor: '#FFF3E0', useImage: true,
         title: '\u5176\u4ED6\u97F3\u9891\u81EA\u52A8\u6682\u505C', description: '\u68C0\u6D4B\u5230\u5176\u4ED6\u97F3\u9891\u64AD\u653E\u65F6\u81EA\u52A8\u6682\u505C',
         hasSwitch: true, switchChecked: this.autoStopOnOtherAudio,
         onSwitchChange: (c: boolean) => { this.autoStopOnOtherAudio = c; this.saveSetting('autoStopOnOtherAudio', String(c)) },
@@ -476,28 +483,28 @@ export struct LoushiTab {
   DesktopLyricsSection() {
     Column() {
       SettingItem({
-        icon: '\uD83C\uDFBC', iconBgColor: '#EDE7F6',
+        icon: $r('sys.symbol.mic'), iconBgColor: '#EDE7F6',
         title: '\u684C\u9762\u6B4C\u8BCD', description: '\u5728\u684C\u9762\u663E\u793A\u60AC\u6D6E\u6B4C\u8BCD',
         hasSwitch: true, switchChecked: this.desktopLyrics,
         onSwitchChange: (c: boolean) => { this.desktopLyrics = c; this.saveSetting('desktopLyrics', String(c)) },
       })
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
       SettingItem({
-        icon: '\uD83D\uDD12', iconBgColor: '#FFEBEE',
+        icon: $r('sys.symbol.lock'), iconBgColor: '#FFEBEE',
         title: '\u9501\u5B9A\u684C\u9762\u6B4C\u8BCD', description: '\u9501\u5B9A\u6B4C\u8BCD\u4F4D\u7F6E\uFF0C\u9632\u6B62\u8BEF\u89E6\u79FB\u52A8',
         hasSwitch: true, switchChecked: this.lockDesktopLyrics,
         onSwitchChange: (c: boolean) => { this.lockDesktopLyrics = c; this.saveSetting('lockDesktopLyrics', String(c)) },
       })
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
       SettingItem({
-        icon: '\uD83D\uDCCB', iconBgColor: '#E8F5E9',
+        icon: $r('sys.symbol.bell'), iconBgColor: '#E8F5E9',
         title: '\u901A\u77E5\u5361\u7247', description: '\u5728\u901A\u77E5\u680F\u663E\u793A\u64AD\u653E\u4FE1\u606F\u5361\u7247',
         hasSwitch: true, switchChecked: this.notificationCard,
         onSwitchChange: (c: boolean) => { this.notificationCard = c; this.saveSetting('notificationCard', String(c)) },
       })
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
       SettingItem({
-        icon: '\uD83D\uDCC4', iconBgColor: '#E3F2FD',
+        icon: $r('sys.symbol.text_alignleft'), iconBgColor: '#E3F2FD',
         title: '\u591A\u884C\u6B4C\u8BCD', description: '\u540C\u65F6\u663E\u793A\u591A\u884C\u6B4C\u8BCD\u6587\u672C',
         hasSwitch: true, switchChecked: this.multiLineLyrics,
         onSwitchChange: (c: boolean) => { this.multiLineLyrics = c; this.saveSetting('multiLineLyrics', String(c)) },
@@ -505,7 +512,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       // Lyrics size - inline
-      this.SettingRow('\uD83D\uDD24', '#FFF8E1', '\u6B4C\u8BCD\u5927\u5C0F')
+      this.SettingRow($r('sys.symbol.textformat'), '#FFF8E1', '\u6B4C\u8BCD\u5927\u5C0F')
       Row({ space: 8 }) {
         Text('\u5C0F')
           .fontSize(13)
@@ -540,7 +547,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       // Lyrics color
-      this.SettingRow('\uD83C\uDFA8', '#F3E5F5', '\u6B4C\u8BCD\u989C\u8272')
+      this.SettingRow($r('sys.symbol.paintpalette_fill'), '#F3E5F5', '\u6B4C\u8BCD\u989C\u8272')
       Row({ space: 12 }) {
         ForEach(LYRICS_COLORS, (colorItem: LyricsColorItem) => {
           Row() {
@@ -560,7 +567,7 @@ export struct LoushiTab {
       Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 40, right: 16 })
 
       // Background opacity
-      this.SettingRow('\uD83D\uDD39', '#E0F2F1', '\u80CC\u666F\u900F\u660E\u5EA6')
+      this.SettingRow($r('app.media.icon_opacity'), '#E0F2F1', '\u80CC\u666F\u900F\u660E\u5EA6', true)
       Row({ space: 12 }) {
         Slider({ value: this.lyricsBgOpacity, min: 0, max: 100, step: 5 })
           .layoutWeight(1).blockColor(PRIMARY_COLOR).selectedColor(PRIMARY_COLOR)
@@ -582,7 +589,7 @@ export struct LoushiTab {
   AboutSection() {
     Row({ space: 12 }) {
       Row() {
-        Text('\u2139\uFE0F').fontSize(18).fontColor(Color.White)
+        SymbolGlyph($r('sys.symbol.info_circle')).fontSize(18).fontColor([PRIMARY_COLOR])
       }
       .width(40).height(40).borderRadius(10).backgroundColor('#E3F2FD').justifyContent(FlexAlign.Center)
       Text('\u5173\u4E8E\u8F6F\u4EF6').fontSize(15).fontColor(TEXT_PRIMARY).fontWeight(FontWeight.Medium).layoutWeight(1)
@@ -610,7 +617,7 @@ export struct LoushiTab {
       Scroll() {
         Column({ space: 16 }) {
           Column({ space: 12 }) {
-            Row() { Text('\uD83C\uDFB5').fontSize(48) }
+            Row() { Image($r('app.media.music_note')).width(36).height(36).fillColor(PRIMARY_COLOR) }
               .width(80).height(80).borderRadius(20).backgroundColor('#F0F0F0').justifyContent(FlexAlign.Center)
             Text('SHMY \u97F3\u4E50\u64AD\u653E\u5668').fontSize(20).fontColor(TEXT_PRIMARY).fontWeight(FontWeight.Bold)
             Text('V1.0.1').fontSize(13).fontColor(TEXT_SECONDARY)
@@ -619,21 +626,21 @@ export struct LoushiTab {
           .width('100%').padding({ top: 24, bottom: 24 }).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
 
           Column() {
-            this.AboutLinkRow('\uD83D\uDCD6', '\u8BF4\u660E')
+            this.AboutLinkRow($r('sys.symbol.doc_text'), '\u8BF4\u660E')
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDD10', '\u6743\u9650')
+            this.AboutLinkRow($r('sys.symbol.lock'), '\u6743\u9650')
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDC19', 'GitHub')
+            this.AboutLinkRow($r('sys.symbol.keyboard'), 'GitHub')
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83C\uDF10', '\u5B98\u7F51')
+            this.AboutLinkRow($r('app.media.icon_globe'), '\u5B98\u7F51', true)
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDCDD', '\u66F4\u65B0\u65E5\u5FD7')
+            this.AboutLinkRow($r('sys.symbol.doc_plaintext'), '\u66F4\u65B0\u65E5\u5FD7')
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDCDC', '\u5F00\u6E90\u534F\u8BAE')
+            this.AboutLinkRow($r('sys.symbol.doc_text'), '\u5F00\u6E90\u534F\u8BAE')
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDC1B', '\u95EE\u9898\u53CD\u9988')
+            this.AboutLinkRow($r('app.media.icon_feedback'), '\u95EE\u9898\u53CD\u9988', true)
             Divider().width('100%').color(DIVIDER_COLOR).margin({ left: 52, right: 16 })
-            this.AboutLinkRow('\uD83D\uDCE7', '\u90AE\u7BB1\u8054\u7CFB: 484894496@qq.com')
+            this.AboutLinkRow($r('sys.symbol.envelope'), '\u90AE\u7BB1\u8054\u7CFB: 484894496@qq.com')
           }
           .width('100%').backgroundColor(CARD_BG).borderRadius(16).margin({ left: 16, right: 16 })
           Column().height(32)
@@ -646,9 +653,15 @@ export struct LoushiTab {
   }
 
   @Builder
-  AboutLinkRow(icon: string, title: string) {
+  AboutLinkRow(icon: ResourceStr, title: string, useImage: boolean = false) {
     Row({ space: 12 }) {
-      Text(icon).fontSize(18)
+      if (typeof icon === 'string') {
+        Text(icon as string).fontSize(18)
+      } else if (useImage) {
+        Image(icon as Resource).width(20).height(20).fillColor(TEXT_PRIMARY)
+      } else {
+        SymbolGlyph(icon as Resource).fontSize(18).fontColor([TEXT_PRIMARY])
+      }
       Text(title).fontSize(15).fontColor(TEXT_PRIMARY).layoutWeight(1)
       Text('\u203A').fontSize(16).fontColor(TEXT_SECONDARY).width(24).textAlign(TextAlign.Center)
     }
@@ -656,11 +669,15 @@ export struct LoushiTab {
   }
 
   @Builder
-  SettingRow(icon: string, bgColor: string, title: string) {
+  SettingRow(icon: ResourceStr, bgColor: string, title: string, useImage: boolean = false) {
     Row({ space: 12 }) {
       Row() {
         if (typeof icon === 'string') {
-          Text(icon).fontSize(18).fontColor(Color.White)
+          Text(icon as string).fontSize(18).fontColor(Color.White)
+        } else if (useImage) {
+          Image(icon as Resource).width(20).height(20).fillColor(Color.White)
+        } else {
+          SymbolGlyph(icon as Resource).fontSize(20).fontColor([Color.White])
         }
       }
       .width(40).height(40).borderRadius(10).backgroundColor(bgColor).justifyContent(FlexAlign.Center)

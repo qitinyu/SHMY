@@ -1,12 +1,15 @@
 // SHMY 数据模型定义
 // MusicModel.ets
+//
+// 音源可用性（2026-06 V4.0 实测验证）
+//   KW 酷我 ─ 搜索✅ 播放✅ 歌词✅ 封面✅  ← 主力音源
+//   KG 酷狗 ─ 搜索✅ 播放⚠️ 歌词✅ 封面✅  ← 搜索补充,播放回退酷我
+//   自定义  ─ 通过 JSON 配置文件导入,支持任意 HTTP API
 
 // 音源类型
 export enum SourceType {
   KG = 'kg',  // 小狗/酷狗
   KW = 'kw',  // 小我/酷我
-  WY = 'wy',  // 小云/网易云
-  QQ = 'qq',  // 小鹅/QQ音乐
 }
 
 // 音源信息项接口
@@ -27,8 +30,6 @@ export class SourceInfo {
   static readonly MAP: Record<string, SourceInfoItem> = {
     [SourceType.KG]: { name: '小狗', codeName: '酷狗', color: '#2196F3' },
     [SourceType.KW]: { name: '小我', codeName: '酷我', color: '#FF9800' },
-    [SourceType.WY]: { name: '小云', codeName: '网易云', color: '#E53935' },
-    [SourceType.QQ]: { name: '小鹅', codeName: 'QQ音乐', color: '#4CAF50' },
   }
 
   static getName(source: string): string {

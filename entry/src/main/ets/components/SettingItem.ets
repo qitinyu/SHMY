@@ -1,5 +1,7 @@
 // SHMY 设置项组件
 // SettingItem.ets
+// 支持 string（文字）、sys.symbol.*（SymbolGlyph）、app.media.*（Image SVG）
+// useImage=true 时使用 Image 渲染（用于 SVG 图标），否则使用 SymbolGlyph
 
 const TEXT_PRIMARY: string = '#1A1A1A'
 const TEXT_SECONDARY: string = '#999999'
@@ -12,23 +14,25 @@ export struct SettingItem {
   description: string = ''
   switchChecked: boolean = false
   onSwitchChange?: (checked: boolean) => void
-
-  // 是否显示开关
   hasSwitch: boolean = false
+  useImage: boolean = false
 
   build() {
     Row({ space: 12 }) {
-      // 图标
       Row() {
         if (typeof this.icon === 'string') {
-          Text(this.icon)
+          Text(this.icon as string)
             .fontSize(18)
             .fontColor(Color.White)
-        } else {
-          Image(this.icon)
+        } else if (this.useImage) {
+          Image(this.icon as Resource)
             .width(20)
             .height(20)
             .fillColor(Color.White)
+        } else {
+          SymbolGlyph(this.icon as Resource)
+            .fontSize(20)
+            .fontColor([Color.White])
         }
       }
       .width(40)
@@ -37,7 +41,6 @@ export struct SettingItem {
       .backgroundColor(this.iconBgColor)
       .justifyContent(FlexAlign.Center)
 
-      // 标题和描述
       Column({ space: 2 }) {
         Text(this.title)
           .fontSize(15)
@@ -55,7 +58,6 @@ export struct SettingItem {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      // Toggle Switch
       if (this.hasSwitch) {
         Toggle({ type: ToggleType.Switch, isOn: this.switchChecked })
           .selectedColor('#007DFF')

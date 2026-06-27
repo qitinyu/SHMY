@@ -202,14 +202,14 @@ export struct QinseTab {
             .width('100%')
             .padding({ left: 4, bottom: 4 })
 
-          // 双击播放提示
-          Text('\u53CC\u51FB\u64AD\u653E \u00B7 \u957F\u6309\u66F4\u591A\u64CD\u4F5C')
+          // 操作提示
+          Text('\u70B9\u51FB\u64AD\u653E \u00B7 \u957F\u6309\u66F4\u591A\u64CD\u4F5C')
             .fontSize(11)
             .fontColor(TEXT_SECONDARY)
             .width('100%')
             .padding({ left: 4, bottom: 8 })
 
-          // Song list - 使用双击播放模式
+          // Song list
           ForEach(this.searchResults, (song: SongInfo) => {
             SongCard({
               song: song,
@@ -331,6 +331,7 @@ export struct QinseTab {
     }
     player.onError = (_error: string) => {
       PlayerStore.pause()
+      this.showToastMessage('播放失败，可能该歌曲暂不可用')
     }
 
     await player.play(playUrl)

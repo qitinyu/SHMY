@@ -41,8 +41,8 @@ export struct EmptyState {
     }
     .width('100%')
     .height('100%')
-    .justifyContent(FlexAlign.Center)
+    .justifyContent(FlexAlign.Start)
     .alignItems(HorizontalAlign.Center)
-    .padding(40)
+    .padding({ top: 60 })
   }
 }

@@ -1,5 +1,5 @@
-// SHMY 公告弹窗组件 - 悬浮卡片样式
-// StartupDialog.ets
+// SHMY 开屏弹窗组件
+// StartupDialog.ets - V1.0.2
 
 const PRIMARY_COLOR: string = '#007DFF'
 const TEXT_PRIMARY: string = '#1A1A1A'
@@ -14,12 +14,13 @@ export struct StartupDialog {
 
   // 更新内容
   private updateContents: string[] = [
-    '全新 HarmonyOS 原生体验，流畅如丝',
-    '多音源聚合搜索，一键找到想听的歌',
-    '支持酷狗、酷我、网易云音乐、QQ音乐',
-    '沉浸式歌词显示，桌面歌词模式',
-    '离线下载，随时随地畅听',
-    '个性化设置，定制你的播放器',
+    '\u4FEE\u590D\u5168\u97F3\u6E90\u641C\u7D22\u529F\u80FD\uFF0C\u652F\u6301\u9177\u72D7/\u9177\u6211/\u7F51\u6613\u4E91/QQ\u97F3\u4E50',
+    '\u641C\u7D22\u7ED3\u679C\u53CC\u51FB\u5373\u53EF\u64AD\u653E',
+    '\u957F\u6309\u6B4C\u66F2\u5F39\u51FA\u7CBE\u7B80\u64CD\u4F5C\u83DC\u5355',
+    '\u5168\u65B0\u5361\u7247\u5F0F\u641C\u7D22\u7ED3\u679C\u5C55\u793A',
+    '\u6536\u85CF\u4E0E\u6B4C\u5355\u4F4D\u7F6E\u4F18\u5316\uFF0C\u652F\u6301\u6298\u53E0',
+    '\u5F00\u5C4F\u5F39\u7A97\u5168\u65B0\u8BBE\u8BA1',
+    '\u5168\u5C40\u56FE\u6807\u66FF\u6362\u4E3A\u534E\u4E3A\u98CE\u683C',
   ]
 
   build() {
@@ -37,29 +38,34 @@ export struct StartupDialog {
 
         // 悬浮卡片
         Column() {
-          // 渐变头部 - 去掉"x"关闭按钮
-          Column({ space: 8 }) {
-            // Logo图片
+          // 渐变头部 - 水平排列
+          Row({ space: 14 }) {
+            // 左侧：Logo
             Image($r('app.media.logo'))
-              .width(56)
-              .height(56)
-              .borderRadius(14)
+              .width(48)
+              .height(48)
+              .borderRadius(12)
               .objectFit(ImageFit.Cover)
-              .shadow({ radius: 12, color: '#00000040', offsetY: 4 })
+              .shadow({ radius: 10, color: '#00000040', offsetY: 3 })
 
-            Text('SHMY MUSIC')
-              .fontSize(22)
-              .fontColor(Color.White)
-              .fontWeight(FontWeight.Bold)
-              .letterSpacing(2)
+            // 右侧：软件名 + 标语
+            Column({ space: 4 }) {
+              Text('SHMY')
+                .fontSize(20)
+                .fontColor(Color.White)
+                .fontWeight(FontWeight.Bold)
+                .letterSpacing(1)
 
-            Text('\u8F69\u7A97 \u00B7 \u7434\u745F \u00B7 \u964B\u5BA4')
-              .fontSize(13)
-              .fontColor('#FFFFFFB3')
+              Text('\u542C\u4F60\u60F3\u542C \u00B7 \u56DE\u5F52\u97F3\u4E50\u672C\u8D28')
+                .fontSize(12)
+                .fontColor('#FFFFFFB3')
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
           }
-          .alignItems(HorizontalAlign.Center)
+          .alignItems(VerticalAlign.Center)
           .width('100%')
-          .padding({ top: 32, bottom: 24, left: 20, right: 20 })
+          .padding({ top: 24, bottom: 20, left: 24, right: 24 })
           .linearGradient({
             direction: GradientDirection.Bottom,
             colors: [[PRIMARY_COLOR, 0], ['#0059B3', 1]],
@@ -72,7 +78,7 @@ export struct StartupDialog {
               .fontColor(TEXT_SECONDARY)
               .layoutWeight(1)
 
-            Text('V1.0.1')
+            Text('V1.0.2')
               .fontSize(14)
               .fontColor(TEXT_PRIMARY)
               .fontWeight(FontWeight.Bold)
@@ -105,34 +111,39 @@ export struct StartupDialog {
             .margin({ top: 16, bottom: 4 })
 
           // 更新内容标题
-          Text('V1.0.1 \u66F4\u65B0\u5185\u5BB9')
+          Text('V1.0.2 \u66F4\u65B0\u5185\u5BB9')
             .fontSize(15)
             .fontColor(TEXT_PRIMARY)
             .fontWeight(FontWeight.Bold)
             .width('100%')
             .padding({ left: 24, right: 24, top: 16, bottom: 12 })
 
-          // 更新内容列表
-          Column({ space: 0 }) {
-            ForEach(this.updateContents, (item: string) => {
-              Row({ space: 10 }) {
-                Text('\u2022')
-                  .fontSize(14)
-                  .fontColor(PRIMARY_COLOR)
-                  .width(16)
+          // 更新内容列表 - 可滑动
+          Scroll() {
+            Column({ space: 0 }) {
+              ForEach(this.updateContents, (item: string) => {
+                Row({ space: 10 }) {
+                  Text('\u2022')
+                    .fontSize(14)
+                    .fontColor(PRIMARY_COLOR)
+                    .width(16)
 
-                Text(item)
-                  .fontSize(14)
-                  .fontColor('#444444')
-                  .layoutWeight(1)
-              }
-              .width('100%')
-              .padding({ top: 7, bottom: 7 })
-              .alignItems(VerticalAlign.Top)
-            })
+                  Text(item)
+                    .fontSize(14)
+                    .fontColor('#444444')
+                    .layoutWeight(1)
+                }
+                .width('100%')
+                .padding({ top: 7, bottom: 7 })
+                .alignItems(VerticalAlign.Top)
+              })
+            }
+            .width('100%')
+            .padding({ left: 24, right: 24 })
           }
+          .constraintSize({ maxHeight: '35%' })
+          .scrollBar(BarState.Auto)
           .width('100%')
-          .padding({ left: 24, right: 24 })
 
           // 底部操作区
           Column({ space: 12 }) {

@@ -238,6 +238,7 @@ export struct XuanchuangTab {
     }
     player.onError = (_error: string) => {
       PlayerStore.pause()
+      this.showToastMsg('播放失败，可能该歌曲暂不可用')
     }
 
     await player.play(song.playUrl)
@@ -1253,6 +1254,21 @@ export struct XuanchuangTab {
               .padding(12)
               .backgroundColor(CARD_BG)
               .borderRadius(12)
+              .onClick(() => {
+                // 点击已完成的下载项 → 播放
+                if (item.status === DownloadStatus.COMPLETED || item.status === DownloadStatus.DOWNLOADING) {
+                  const song: SongInfo = {
+                    songId: item.songId,
+                    songName: item.songName,
+                    artist: item.artist,
+                    album: item.album,
+                    coverUrl: item.coverUrl,
+                    source: item.source,
+                    playUrl: item.playUrl,
+                  }
+                  this.playSong(song)
+                }
+              })
             })
           }
           .width('100%')
